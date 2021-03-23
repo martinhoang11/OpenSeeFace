@@ -205,6 +205,7 @@ try:
     need_reinit = 0
     failures = 0
     source_name = input_reader.name
+    blink_count = 0
     while repeat or input_reader.is_open():
         if not input_reader.is_open() or need_reinit == 1:
             input_reader = InputReader(args.capture, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag, dcap=dcap)
@@ -264,10 +265,15 @@ try:
                 f.id += args.face_id_offset
                 if f.eye_blink is None:
                     f.eye_blink = [1, 1]
+
                 right_state = "O" if f.eye_blink[0] > 0.30 else "-"
                 left_state = "O" if f.eye_blink[1] > 0.30 else "-"
+                if f.eye_blink[0] < 0.8 or f.eye_blink[1] < 0.8:
+                    blink_count += 1 
+
                 if args.silent == 0:
                     print(f"Confidence[{f.id}]: {f.conf:.4f} / 3D fitting error: {f.pnp_error:.4f} / Eyes: {left_state}, {right_state}")
+                
                 detected = True
                 if not f.success:
                     pts_3d = np.zeros((70, 3), np.float32)
@@ -295,6 +301,7 @@ try:
                     packet.extend(bytearray(struct.pack("f", c)))
                 if args.visualize > 1:
                     frame = cv2.putText(frame, str(f.id), (int(f.bbox[0]), int(f.bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,255))
+                    frame = cv2.putText(frame, 'Blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,255))
                 if args.visualize > 2:
                     frame = cv2.putText(frame, f"{f.conf:.4f}", (int(f.bbox[0] + 18), int(f.bbox[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
                 for pt_num, (x,y,c) in enumerate(f.lms):
@@ -352,6 +359,7 @@ try:
                         log.write(f",{x},{-y},{-z}")
                 if f.current_features is None:
                     f.current_features = {}
+
                 for feature in features:
                     if not feature in f.current_features:
                         f.current_features[feature] = 0
@@ -361,6 +369,10 @@ try:
                 if not log is None:
                     log.write("\r\n")
                     log.flush()
+        
+            ###mouth opening - Thresh hold
+            if f.current_features['mouth_open'] > 0.5:
+                frame = cv2.putText(frame, 'Mouth: Open', (10,100), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,255))
 
             if detected and len(faces) < 40:
                 sock.sendto(packet, (target_ip, target_port))

@@ -1133,7 +1133,6 @@ class Tracker():
                     thread = threading.Thread(target=worker_thread, args=(session, frame, crops[started], crop_info[started], results, self.input_name, started, self))
                     started += 1
                     thread.start()
-
         actual_faces = []
         good_crops = []
         for crop in crop_info:
@@ -1164,7 +1163,6 @@ class Tracker():
         sorted_results = sorted(best_results.values(), key=lambda x: x[0], reverse=True)[:self.max_faces]
         self.assign_face_info(sorted_results)
         duration_model = 1000 * (time.perf_counter() - start_model)
-
         results = []
         detected = []
         start_pnp = time.perf_counter()

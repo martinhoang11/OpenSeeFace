@@ -10,7 +10,7 @@ import copy
 
 def py_cpu_nms(dets, thresh):
     """ Pure Python NMS baseline.
-        Copyright (c) 2015 Microsoft
+        Copyright (c) 2015 Microsoft 
         Licensed under The MIT License
         Written by Ross Girshick
     """
