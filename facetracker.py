@@ -218,8 +218,9 @@ try:
         if not input_reader.is_ready():
             time.sleep(0.02)
             continue
+        
 
-        ret, frame = input_reader.read()
+        ret, frame = input_reader.read()        
         if not ret:
             if repeat:
                 if need_reinit == 0:
@@ -268,7 +269,7 @@ try:
 
                 right_state = "O" if f.eye_blink[0] > 0.30 else "-"
                 left_state = "O" if f.eye_blink[1] > 0.30 else "-"
-                if f.eye_blink[0] < 0.8 or f.eye_blink[1] < 0.8:
+                if f.eye_blink[0] < 0.7 or f.eye_blink[1] < 0.7:
                     blink_count += 1 
 
                 if args.silent == 0:
@@ -301,7 +302,10 @@ try:
                     packet.extend(bytearray(struct.pack("f", c)))
                 if args.visualize > 1:
                     frame = cv2.putText(frame, str(f.id), (int(f.bbox[0]), int(f.bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,255))
-                    frame = cv2.putText(frame, 'Blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,255))
+                    frame = cv2.putText(frame, 'Blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,0))
+                    frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,255,0), 1)
+                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 1, cv2.LINE_AA)
+
                 if args.visualize > 2:
                     frame = cv2.putText(frame, f"{f.conf:.4f}", (int(f.bbox[0] + 18), int(f.bbox[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
                 for pt_num, (x,y,c) in enumerate(f.lms):
@@ -333,10 +337,11 @@ try:
                         if not (x < 0 or y < 0 or x >= height or y >= width):
                             frame[int(x), int(y)] = color
                 if args.pnp_points != 0 and (args.visualize != 0 or not out is None) and f.rotation is not None:
-                    if args.pnp_points > 1:
-                        projected = cv2.projectPoints(f.face_3d[0:66], f.rotation, f.translation, tracker.camera, tracker.dist_coeffs)
-                    else:
-                        projected = cv2.projectPoints(f.contour, f.rotation, f.translation, tracker.camera, tracker.dist_coeffs)
+                    # if args.pnp_points > 1:
+                    #     projected = cv2.projectPoints(f.face_3d[0:66], f.rotation, f.translation, tracker.camera, tracker.dist_coeffs)
+                    # else:
+                        
+                    #     projected = cv2.projectPoints(f.contour, f.rotation, f.translation, tracker.camera, tracker.dist_coeffs)
                     for [(x,y)] in projected[0]:
                         x = int(x + 0.5)
                         y = int(y + 0.5)
@@ -372,7 +377,7 @@ try:
         
             ###mouth opening - Thresh hold
             if f.current_features['mouth_open'] > 0.5:
-                frame = cv2.putText(frame, 'Mouth: Open', (10,100), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,255))
+                frame = cv2.putText(frame, 'Mouth: Open', (10,100), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,0))
 
             if detected and len(faces) < 40:
                 sock.sendto(packet, (target_ip, target_port))
