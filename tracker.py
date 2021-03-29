@@ -735,7 +735,7 @@ class Tracker():
         c0, c1, c2 = 66, 132, 198
         if self.model_type == -1:
             c0, c1, c2 = 30, 60, 90
-        t_main = tensor[0:c0].reshape((c0,self.out_res_i * self.out_res_i))
+        t_main = tensor[0:c0].reshape((c0, self.out_res_i * self.out_res_i))
         t_m = t_main.argmax(1)
         indices = np.expand_dims(t_m, 1)
         t_conf = np.take_along_axis(t_main, indices, 1).reshape((c0,))
@@ -761,9 +761,7 @@ class Tracker():
 
     def estimate_depth(self, face_info):
         lms = np.concatenate((face_info.lms, np.array([[face_info.eye_state[0][1], face_info.eye_state[0][2], face_info.eye_state[0][3]], [face_info.eye_state[1][1], face_info.eye_state[1][2], face_info.eye_state[1][3]]], np.float)), 0)
-
         image_pts = np.array(lms)[face_info.contour_pts, 0:2]
-
         success = False
         if not face_info.rotation is None:
             success, face_info.rotation, face_info.translation = cv2.solvePnP(face_info.contour, image_pts, self.camera, self.dist_coeffs, useExtrinsicGuess=True, rvec=np.transpose(face_info.rotation), tvec=np.transpose(face_info.translation), flags=cv2.SOLVEPNP_ITERATIVE)
@@ -854,8 +852,8 @@ class Tracker():
                 face_info.update_contour()
         else:
             face_info.fail_count = 0
-
         euler = cv2.RQDecomp3x3(rmat)[0]
+
         return True, matrix_to_quaternion(rmat), euler, pnp_error, pts_3d, lms
 
     def preprocess(self, im, crop):
@@ -1092,6 +1090,7 @@ class Tracker():
 
             scale_x = float(crop_x2 - crop_x1) / self.res
             scale_y = float(crop_y2 - crop_y1) / self.res
+
 
             if crop_x2 - crop_x1 < 4 or crop_y2 - crop_y1 < 4:
                 continue

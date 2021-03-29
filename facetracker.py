@@ -4,6 +4,7 @@ import sys
 import argparse
 import traceback
 import gc
+import math
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("-i", "--ip", help="Set IP address for sending tracking data", default="127.0.0.1")
@@ -67,6 +68,11 @@ class OutputLog(object):
         if not self.fh is None:
             self.fh.flush()
         self.output.flush()
+
+#define functions
+def is_between(a, x, b):
+    return min(a, b) < x < max(a, b)
+
 output_logfile = None
 if args.log_output != "":
     output_logfile = open(args.log_output, "w")
@@ -299,15 +305,57 @@ try:
                 packet.extend(bytearray(struct.pack("f", f.translation[0])))
                 packet.extend(bytearray(struct.pack("f", f.translation[1])))
                 packet.extend(bytearray(struct.pack("f", f.translation[2])))
+
+                ###mouth opening - Thresh hold
+                if f.current_features['mouth_open'] > 0.2 and f.current_features['mouth_wide'] < 0.2:
+                    frame = cv2.putText(frame, 'Open', (80,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
+
+                ###head pose visualize
+                axis = np.float32([[500,0,0], [0, 500,0], [0,0, 500]])
+                imgpts, jac = cv2.projectPoints(axis, f.rotation, f.translation, tracker.camera, tracker.dist_coeffs)
+                cv2.line(frame, (int(f.lms[30][0]), int(f.lms[30][1])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
+                cv2.line(frame, (int(f.lms[30][0]), int(f.lms[30][1])), tuple(imgpts[0].ravel()), (255,0,), 2) #BLUE
+                cv2.line(frame, (int(f.lms[30][0]), int(f.lms[30][1])), tuple(imgpts[2].ravel()), (0,0,255), 2) #RED
+
+                if is_between(0, f.euler[0], 150):
+                    pitch_stt = 'UP'
+                elif f.euler[0] < 0:
+                    pitch_stt = 'DOWN'
+                else:
+                    pitch_stt = 'STRAIGHT'
+
+                if f.euler[1] > 30:
+                    yaw_stt = 'LEFT'
+                elif f.euler[1] < 0:
+                    yaw_stt = 'RIGHT'
+                else:
+                    yaw_stt = 'STRAIGHT'
+                
+                if f.euler[2] > 100:
+                    roll_stt = 'RIGHT'
+                elif f.euler[2] < 65:
+                    roll_stt = 'LEFT'
+                else:
+                    roll_stt = 'STRAIGHT'
+                ########################
+
+                ###eye blink
+                
+
+
                 if not log is None:
                     log.write(f"{frame_count},{now},{width},{height},{args.fps},{face_num},{f.id},{f.eye_blink[0]},{f.eye_blink[1]},{f.conf},{f.success},{f.pnp_error},{f.quaternion[0]},{f.quaternion[1]},{f.quaternion[2]},{f.quaternion[3]},{f.euler[0]},{f.euler[1]},{f.euler[2]},{f.rotation[0]},{f.rotation[1]},{f.rotation[2]},{f.translation[0]},{f.translation[1]},{f.translation[2]}")
                 for (x,y,c) in f.lms:
                     packet.extend(bytearray(struct.pack("f", c)))
                 if args.visualize > 1:
-                    frame = cv2.putText(frame, str(f.id), (int(f.bbox[0]), int(f.bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,255))
-                    frame = cv2.putText(frame, 'Blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,255))
-                    frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,255,0), 1)
-                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, str(f.id), (int(f.bbox[0]), int(f.bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,0))
+                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, 'blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
+                    frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,0,255), 1)
+                    frame = cv2.putText(frame, 'mouth: ', (10,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(f.euler[0], 3)})", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(f.euler[1], 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(f.euler[2], 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,0), 1, cv2.LINE_AA)
 
                 if args.visualize > 2:
                     frame = cv2.putText(frame, f"{f.conf:.4f}", (int(f.bbox[0] + 18), int(f.bbox[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
@@ -377,10 +425,6 @@ try:
                 if not log is None:
                     log.write("\r\n")
                     log.flush()
-        
-            ###mouth opening - Thresh hold
-            if f.current_features['mouth_open'] > 0.6 and f.current_features['mouth_wide'] < 0.2:
-                frame = cv2.putText(frame, 'Mouth: Open', (10,100), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,255))
 
             if detected and len(faces) < 40:
                 sock.sendto(packet, (target_ip, target_port))
