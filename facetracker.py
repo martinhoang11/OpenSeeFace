@@ -184,6 +184,7 @@ total_tracking_time = 0.0
 tracking_time = 0.0
 tracking_frames = 0
 frame_count = 0
+eye_blink_frames = 0
 
 features = ["eye_l", "eye_r", "eyebrow_steepness_l", "eyebrow_updown_l", "eyebrow_quirk_l", "eyebrow_steepness_r", "eyebrow_updown_r", "eyebrow_quirk_r", "mouth_corner_updown_l", "mouth_corner_inout_l", "mouth_corner_updown_r", "mouth_corner_inout_r", "mouth_open", "mouth_wide"]
 
@@ -228,7 +229,7 @@ try:
 
         ret, frame = input_reader.read()
         #2 -50 - 0.5 -20,-50
-        # frame = cv2.convertScaleAbs(frame, -1, 0.5, -50)
+        # frame = cv2.convertScaleAbs(frame, -1, 0.5, -20)
 
         if not ret:
             if repeat:
@@ -279,7 +280,7 @@ try:
                 right_state = "O" if f.eye_blink[0] > 0.30 else "-"
                 left_state = "O" if f.eye_blink[1] > 0.30 else "-"
                 if f.eye_blink[0] < 0.7 or f.eye_blink[1] < 0.7:
-                    blink_count += 1 
+                    eye_blink_frames += 1
 
                 if args.silent == 0:
                     print(f"Confidence[{f.id}]: {f.conf:.4f} / 3D fitting error: {f.pnp_error:.4f} / Eyes: {left_state}, {right_state}")
@@ -307,7 +308,7 @@ try:
                 packet.extend(bytearray(struct.pack("f", f.translation[2])))
 
                 ###mouth opening - Thresh hold
-                if f.current_features['mouth_open'] > 0.2 and f.current_features['mouth_wide'] < 0.2:
+                if f.current_features['mouth_open'] > 0.5 and f.current_features['mouth_wide'] < 0.1:
                     frame = cv2.putText(frame, 'Open', (80,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
 
                 ###head pose visualize
@@ -318,30 +319,50 @@ try:
                 cv2.line(frame, (int(f.lms[30][0]), int(f.lms[30][1])), tuple(imgpts[2].ravel()), (0,0,255), 2) #RED
 
                 if is_between(0, f.euler[0], 150):
-                    pitch_stt = 'UP'
+                    pitch_stt = 'up'
                 elif f.euler[0] < 0:
-                    pitch_stt = 'DOWN'
+                    pitch_stt = 'down'
                 else:
-                    pitch_stt = 'STRAIGHT'
+                    pitch_stt = 'straight'
 
                 if f.euler[1] > 30:
-                    yaw_stt = 'LEFT'
+                    yaw_stt = 'left'
                 elif f.euler[1] < 0:
-                    yaw_stt = 'RIGHT'
+                    yaw_stt = 'right'
                 else:
-                    yaw_stt = 'STRAIGHT'
+                    yaw_stt = 'straight'
                 
-                if f.euler[2] > 100:
-                    roll_stt = 'RIGHT'
+                if f.euler[2] > 110:
+                    roll_stt = 'right'
                 elif f.euler[2] < 65:
-                    roll_stt = 'LEFT'
+                    roll_stt = 'left'
                 else:
-                    roll_stt = 'STRAIGHT'
+                    roll_stt = 'straight'
                 ########################
 
                 ###eye blink
+                if eye_blink_frames >= 3:
+                    blink_count += 1
+                    eye_blink_frames = 0
                 
-
+                ###eye gaze
+                right_gaze = (f.pts_3d[66] - f.pts_3d[68])*100
+                left_gaze = (f.pts_3d[67] - f.pts_3d[69])*100
+                
+                if right_gaze[0] > 2:
+                    eye_stt_lr = 'right'
+                elif left_gaze[0] <-2:
+                    eye_stt_lr = 'left'
+                else:
+                    eye_stt_lr = 'straight'
+                
+                if right_gaze[1] > 2 or left_gaze[1] > 2:
+                    eye_stt_ud = 'up'
+                elif right_gaze[1] < 0 or left_gaze[1] < 0:
+                    eye_stt_ud = 'down'
+                else:
+                    eye_stt_ud = 'straight'
+                #############
 
                 if not log is None:
                     log.write(f"{frame_count},{now},{width},{height},{args.fps},{face_num},{f.id},{f.eye_blink[0]},{f.eye_blink[1]},{f.conf},{f.success},{f.pnp_error},{f.quaternion[0]},{f.quaternion[1]},{f.quaternion[2]},{f.quaternion[3]},{f.euler[0]},{f.euler[1]},{f.euler[2]},{f.rotation[0]},{f.rotation[1]},{f.rotation[2]},{f.translation[0]},{f.translation[1]},{f.translation[2]}")
@@ -349,13 +370,18 @@ try:
                     packet.extend(bytearray(struct.pack("f", c)))
                 if args.visualize > 1:
                     frame = cv2.putText(frame, str(f.id), (int(f.bbox[0]), int(f.bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,0))
-                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, 'blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
-                    frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,0,255), 1)
-                    frame = cv2.putText(frame, 'mouth: ', (10,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(f.euler[0], 3)})", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(f.euler[1], 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(f.euler[2], 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,255,0), 1, cv2.LINE_AA)
+
+                    frame = cv2.putText(frame, 'blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,0, 255), 1, cv2.LINE_AA)
+                    frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (255,0, 0), 1)
+                    frame = cv2.putText(frame, 'mouth: ', (10,80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(f.euler[0], 3)})", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(f.euler[1], 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(f.euler[2], 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_ud: {eye_stt_ud}", (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_lr: {eye_stt_lr}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_x_lr: {left_gaze[0]:.3f}/{right_gaze[0]:.3f}", (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_y_ud: {left_gaze[1]:.3f}/{right_gaze[1]:.3f}", (10, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
 
                 if args.visualize > 2:
                     frame = cv2.putText(frame, f"{f.conf:.4f}", (int(f.bbox[0] + 18), int(f.bbox[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))

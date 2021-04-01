@@ -852,6 +852,7 @@ class Tracker():
                 face_info.update_contour()
         else:
             face_info.fail_count = 0
+            
         euler = cv2.RQDecomp3x3(rmat)[0]
 
         return True, matrix_to_quaternion(rmat), euler, pnp_error, pts_3d, lms
