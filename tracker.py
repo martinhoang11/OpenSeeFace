@@ -1208,4 +1208,4 @@ class Tracker():
 
         results = sorted(results, key=lambda x: x.id)
 
-        return results
+        return results, scale_x, scale_y

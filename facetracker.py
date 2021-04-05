@@ -147,7 +147,7 @@ if args.benchmark > 0:
         total = 0.0
         for i in range(100):
             start = time.perf_counter()
-            r = tracker.predict(im)
+            r, scale_x, scale_y = tracker.predict(im)
             total += time.perf_counter() - start
         print(1. / (total / 100.))
     sys.exit(0)
@@ -263,7 +263,7 @@ try:
 
         try:
             inference_start = time.perf_counter()
-            faces = tracker.predict(frame)
+            faces, scale_x, scale_y = tracker.predict(frame)
             if len(faces) > 0:
                 inference_time = (time.perf_counter() - inference_start)
                 total_tracking_time += inference_time
@@ -312,11 +312,14 @@ try:
                     frame = cv2.putText(frame, 'Open', (80,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
 
                 ###head pose visualize
-                axis = np.float32([[500,0,0], [0, 500,0], [0,0, 500]])
+                # tracker.draw_annotation_box(frame, f.rotation, f.translation)
+                axis = np.float32([[500,0,0], 
+                                    [0,500,0], 
+                                    [0,0,500]])
                 imgpts, jac = cv2.projectPoints(axis, f.rotation, f.translation, tracker.camera, tracker.dist_coeffs)
-                cv2.line(frame, (int(f.lms[30][0]), int(f.lms[30][1])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
-                cv2.line(frame, (int(f.lms[30][0]), int(f.lms[30][1])), tuple(imgpts[0].ravel()), (255,0,), 2) #BLUE
-                cv2.line(frame, (int(f.lms[30][0]), int(f.lms[30][1])), tuple(imgpts[2].ravel()), (0,0,255), 2) #RED
+                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
+                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[0].ravel()), (255,0,0), 2) #BLUE
+                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[2].ravel()), (0,0,255), 2) #RED
 
                 if is_between(0, f.euler[0], 150):
                     pitch_stt = 'up'
@@ -363,7 +366,6 @@ try:
                 else:
                     eye_stt_ud = 'straight'
                 #############
-
                 if not log is None:
                     log.write(f"{frame_count},{now},{width},{height},{args.fps},{face_num},{f.id},{f.eye_blink[0]},{f.eye_blink[1]},{f.conf},{f.success},{f.pnp_error},{f.quaternion[0]},{f.quaternion[1]},{f.quaternion[2]},{f.quaternion[3]},{f.euler[0]},{f.euler[1]},{f.euler[2]},{f.rotation[0]},{f.rotation[1]},{f.rotation[2]},{f.translation[0]},{f.translation[1]},{f.translation[2]}")
                 for (x,y,c) in f.lms:
