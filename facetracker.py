@@ -147,7 +147,7 @@ if args.benchmark > 0:
         total = 0.0
         for i in range(100):
             start = time.perf_counter()
-            r, scale_x, scale_y = tracker.predict(im)
+            r = tracker.predict(im)
             total += time.perf_counter() - start
         print(1. / (total / 100.))
     sys.exit(0)
@@ -263,7 +263,7 @@ try:
 
         try:
             inference_start = time.perf_counter()
-            faces, scale_x, scale_y = tracker.predict(frame)
+            faces = tracker.predict(frame)
             if len(faces) > 0:
                 inference_time = (time.perf_counter() - inference_start)
                 total_tracking_time += inference_time
@@ -310,16 +310,7 @@ try:
                 ###mouth opening - Thresh hold
                 if f.current_features['mouth_open'] > 0.5 and f.current_features['mouth_wide'] < 0.1:
                     frame = cv2.putText(frame, 'Open', (80,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
-
-                ###head pose visualize
-                # tracker.draw_annotation_box(frame, f.rotation, f.translation)
-                axis = np.float32([[500,0,0], 
-                                    [0,500,0], 
-                                    [0,0,500]])
-                imgpts, jac = cv2.projectPoints(axis, f.rotation, f.translation, tracker.camera, tracker.dist_coeffs)
-                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
-                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[0].ravel()), (255,0,0), 2) #BLUE
-                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[2].ravel()), (0,0,255), 2) #RED
+                ###
 
                 if is_between(0, f.euler[0], 150):
                     pitch_stt = 'up'
@@ -365,7 +356,44 @@ try:
                     eye_stt_ud = 'down'
                 else:
                     eye_stt_ud = 'straight'
-                #############
+
+                ####eye gaze visualize
+                cv2.line(frame, (145, 170), (int(f.lms[66][1]), int(f.lms[66][0])), (0,255,0), 2) #GREEN
+
+                ####
+
+
+                ##### head pose visualize
+                # image_points = np.array([
+                #             (f.lms[33][1], f.lms[33][0]),     # Nose tip
+                #             (f.lms[8][1], f.lms[8][0]),   # Chin
+                #             (f.lms[45][1], f.lms[45][0]),     # Left eye left corner
+                #             (f.lms[36][1], f.lms[36][0]),     # Right eye right corne
+                #             (f.lms[62][1], f.lms[62][0]),     # Left Mouth corner
+                #             (f.lms[58][1], f.lms[58][0])      # Right mouth corner
+                #         ], dtype="double")
+                        
+                # model_points = np.array([
+                #                         (0.0, 0.0, 0.0),             # Nose tip
+                #                         (0.0, -330.0, -65.0),        # Chin
+                #                         (-165.0, 170.0, -135.0),     # Left eye left corner
+                #                         (165.0, 170.0, -135.0),      # Right eye right corner
+                #                         (-150.0, -150.0, -125.0),    # Left Mouth corner
+                #                         (150.0, -150.0, -125.0)      # Right mouth corner                         
+                #                     ])
+                                    
+                # axis = np.float32([[500,0,0], 
+                #           [0,500,0], 
+                #           [0,0,500]])
+        
+                # (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, tracker.camera, tracker.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+                # imgpts, jac = cv2.projectPoints(axis, rotation_vector, translation_vector, tracker.camera, tracker.dist_coeffs)
+
+                # cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
+                # cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[0].ravel()), (255,0,), 2) #BLUE
+                # cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[2].ravel()), (0,0,255), 2) #RED
+
+                ################
                 if not log is None:
                     log.write(f"{frame_count},{now},{width},{height},{args.fps},{face_num},{f.id},{f.eye_blink[0]},{f.eye_blink[1]},{f.conf},{f.success},{f.pnp_error},{f.quaternion[0]},{f.quaternion[1]},{f.quaternion[2]},{f.quaternion[3]},{f.euler[0]},{f.euler[1]},{f.euler[2]},{f.rotation[0]},{f.rotation[1]},{f.rotation[2]},{f.translation[0]},{f.translation[1]},{f.translation[2]}")
                 for (x,y,c) in f.lms:
