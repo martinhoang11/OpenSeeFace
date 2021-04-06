@@ -358,8 +358,51 @@ try:
                     eye_stt_ud = 'straight'
 
                 ####eye gaze visualize
-                cv2.line(frame, (145, 170), (int(f.lms[66][1]), int(f.lms[66][0])), (0,255,0), 2) #GREEN
+                pupil_r_x = int((f.lms[36][1] + f.lms[39][1]) / 2)
+                pupil_r_y = int((f.lms[36][0] + f.lms[39][0]) / 2)
+                # pupil_l_x = int((f.lms[42][1] + f.lms[45][1]) / 2)
+                # pupil_l_y = int(f.lms[42][0])
 
+                # img_points = np.array([
+                #     (f.lms[66][1], f.lms[66][0]),
+                #     (f.lms[67][1], f.lms[67][0]),
+                #     (f.lms[45][1], f.lms[45][0]),     # Left eye left corner
+                #     (f.lms[36][1], f.lms[36][0])    # Right eye right corne
+                # ],dtype='double')
+
+                # model_points = np.array([
+                #     (pupil_r_x, pupil_r_y, -135.0),
+                #     (pupil_l_x, pupil_l_y, -135.0),
+                #     (-165.0, 170.0, -135.0),     # Left eye left corner
+                #     (165.0, 170.0, -135.0)
+                # ])
+
+                # axis = np.float32([[500,0,0], 
+                #           [0,500,0], 
+                #           [0,0,500]])
+
+
+                # center = (frame.shape[1]/2, frame.shape[0]/2)
+                # focal_length = center[0] / np.tan(60/2 * np.pi / 180)
+                # camera_matrix = np.array(
+                #                     [[focal_length, 0, center[0]],
+                #                     [0, focal_length, center[1]],
+                #                     [0, 0, 1]], dtype = "double"
+                #                     )
+
+                # dist_coeffs = np.zeros((4,1)) # Assuming no
+                # (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, img_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+                # imgpts, jac = cv2.projectPoints(axis, rotation_vector, translation_vector, tracker.camera, tracker.dist_coeffs)
+
+                # cv2.line(frame, (int(f.lms[66][1]), int(f.lms[66][0])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
+                # cv2.line(frame, (int(f.lms[67][1]), int(f.lms[67][0])), tuple(imgpts[0].ravel()), (255,0,), 2) #BLUE
+
+                dx = int(f.lms[66][1] - pupil_r_x)
+                dy = int(f.lms[66][0] - pupil_r_y)
+
+                angle = np.deg2rad(math.atan((pupil_r_y-f.lms[66][0])/(f.lms[66][1]-pupil_r_x))*180/math.pi)
+                print(angle)
+                cv2.line(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1]), int(f.lms[66][0])), (0,255,0), 2) #GREEN
                 ####
 
 
