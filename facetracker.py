@@ -5,6 +5,7 @@ import argparse
 import traceback
 import gc
 import math
+from math import cos, sin
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("-i", "--ip", help="Set IP address for sending tracking data", default="127.0.0.1")
@@ -127,6 +128,40 @@ if os.name == 'nt' and (args.list_cameras > 0 or not args.list_dcaps is None):
     cap.destroy_capture()
     sys.exit(0)
 
+
+def draw_axis(img, yaw, pitch, roll, tdx=None, tdy=None, size = 100):
+
+    pitch = pitch * np.pi / 180
+    yaw = -(yaw * np.pi / 180)
+    roll = roll * np.pi / 180
+
+    if tdx != None and tdy != None:
+        tdx = tdx
+        tdy = tdy
+    else:
+        height, width = img.shape[:2]
+        tdx = width / 2
+        tdy = height / 2
+
+    # X-Axis pointing to right. drawn in red
+    x1 = size * (cos(yaw) * cos(roll)) + tdx
+    y1 = size * (cos(pitch) * sin(roll) + cos(roll) * sin(pitch) * sin(yaw)) + tdy
+
+    # Y-Axis | drawn in green
+    #        v
+    x2 = size * (-cos(yaw) * sin(roll)) + tdx
+    y2 = size * (cos(pitch) * cos(roll) - sin(pitch) * sin(yaw) * sin(roll)) + tdy
+
+    # Z-Axis (out of the screen) drawn in blue
+    x3 = size * (sin(yaw)) + tdx
+    y3 = size * (-cos(yaw) * sin(pitch)) + tdy
+
+    cv2.line(img, (int(tdx), int(tdy)), (int(x1),int(y1)),(0,0,255),3)
+    cv2.line(img, (int(tdx), int(tdy)), (int(x2),int(y2)),(0,255,0),3)
+    cv2.line(img, (int(tdx), int(tdy)), (int(x3),int(y3)),(255,0,0),2)
+
+    return img
+
 import numpy as np
 import time
 import cv2
@@ -228,6 +263,7 @@ try:
         
 
         ret, frame = input_reader.read()
+        # frame = cv2.flip(frame,1)
         #2 -50 - 0.5 -20,-50
         # frame = cv2.convertScaleAbs(frame, -1, 0.5, -20)
 
@@ -308,10 +344,11 @@ try:
                 packet.extend(bytearray(struct.pack("f", f.translation[2])))
 
                 ###mouth opening - Thresh hold
-                if f.current_features['mouth_open'] > 0.5 and f.current_features['mouth_wide'] < 0.1:
-                    frame = cv2.putText(frame, 'Open', (80,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
-                ###
-
+                try:
+                    if f.current_features['mouth_open'] > 0.5 and f.current_features['mouth_wide'] < 0.1:
+                        frame = cv2.putText(frame, 'Open', (80,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
+                except:
+                    pass
                 if is_between(0, f.euler[0], 150):
                     pitch_stt = 'up'
                 elif f.euler[0] < 0:
@@ -374,34 +411,8 @@ try:
                     eye_stt_ud = 'straight'
 
                 #### head pose visualize
-                image_points = np.array([
-                            (f.lms[33][1], f.lms[33][0]),     # Nose tip
-                            (f.lms[8][1], f.lms[8][0]),   # Chin
-                            (f.lms[45][1], f.lms[45][0]),     # Left eye left corner
-                            (f.lms[36][1], f.lms[36][0]),     # Right eye right corne
-                            (f.lms[62][1], f.lms[62][0]),     # Left Mouth corner
-                            (f.lms[58][1], f.lms[58][0])      # Right mouth corner
-                        ], dtype="double")
-                        
-                model_points = np.array([
-                                        (0.0, 0.0, 0.0),             # Nose tip
-                                        (0.0, -330.0, -65.0),        # Chin
-                                        (-165.0, 170.0, -135.0),     # Left eye left corner
-                                        (165.0, 170.0, -135.0),      # Right eye right corner
-                                        (-150.0, -150.0, -125.0),    # Left Mouth corner
-                                        (150.0, -150.0, -125.0)      # Right mouth corner                         
-                                    ])
-                                    
-                axis = np.float32([[500,0,0], 
-                          [0,500,0], 
-                          [0,0,500]])
-        
-                (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, tracker.camera, tracker.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
-                imgpts, jac = cv2.projectPoints(axis, rotation_vector, translation_vector, tracker.camera, tracker.dist_coeffs)
-
-                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
-                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[0].ravel()), (255,0,), 2) #BLUE
-                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[2].ravel()), (0,0,255), 2) #RED
+               
+                draw_axis(frame, -f.euler[1]+8, f.euler[0]+10, f.euler[2]+3, tdx=f.lms[30][1], tdy=f.lms[30][0], size = 100)
 
                 ###############
                 if not log is None:
