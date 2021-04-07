@@ -340,103 +340,70 @@ try:
                     eye_blink_frames = 0
                 
                 ###eye gaze
+                pupil_r_x = int((f.lms[36][1] + f.lms[39][1]) / 2)
+                pupil_r_y = int((f.lms[36][0] + f.lms[39][0]) / 2)
+                pupil_l_x = int((f.lms[42][1] + f.lms[45][1]) / 2)
+                pupil_l_y = int((f.lms[42][0] + f.lms[45][0]) / 2)
+
                 right_gaze = (f.pts_3d[66] - f.pts_3d[68])*100
                 left_gaze = (f.pts_3d[67] - f.pts_3d[69])*100
                 
-                if right_gaze[0] > 2:
+                if right_gaze[0] > 2 and left_gaze[0] > 0:
                     eye_stt_lr = 'right'
-                elif left_gaze[0] <-2:
+                    cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1])-40, int(f.lms[67][0])), (0,255,255), 2, tipLength=0.2) #GREEN
+                    cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1])-40, int(f.lms[66][0])), (0,255,255), 2, tipLength=0.2) #GREEN
+
+                elif left_gaze[0] <-2 and right_gaze[0] < -1.5  or left_gaze[0] < -4:
                     eye_stt_lr = 'left'
+                    cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1])+40, int(f.lms[67][0])), (0,255,255), 2, tipLength=0.2) #GREEN
+                    cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1])+40, int(f.lms[66][0])), (0,255,255), 2, tipLength=0.2) #GREEN
+
                 else:
                     eye_stt_lr = 'straight'
                 
-                if right_gaze[1] > 2 or left_gaze[1] > 2:
+                if right_gaze[1] > 2.8 and left_gaze[1] > 2.8:
                     eye_stt_ud = 'up'
+                    cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1]), int(f.lms[67][0])-40), (0,255,255), 2, tipLength=0.2) #GREEN
+                    cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1]), int(f.lms[66][0])-40), (0,255,255), 2, tipLength=0.2) #GREEN
+
                 elif right_gaze[1] < 0 or left_gaze[1] < 0:
                     eye_stt_ud = 'down'
+                    cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1]), int(f.lms[67][0])+40), (0,255,255), 2, tipLength=0.2) #GREEN
+                    cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1]), int(f.lms[66][0])+40), (0,255,255), 2, tipLength=0.2) #GREEN
                 else:
                     eye_stt_ud = 'straight'
 
-                ####eye gaze visualize
-                pupil_r_x = int((f.lms[36][1] + f.lms[39][1]) / 2)
-                pupil_r_y = int((f.lms[36][0] + f.lms[39][0]) / 2)
-                # pupil_l_x = int((f.lms[42][1] + f.lms[45][1]) / 2)
-                # pupil_l_y = int(f.lms[42][0])
-
-                # img_points = np.array([
-                #     (f.lms[66][1], f.lms[66][0]),
-                #     (f.lms[67][1], f.lms[67][0]),
-                #     (f.lms[45][1], f.lms[45][0]),     # Left eye left corner
-                #     (f.lms[36][1], f.lms[36][0])    # Right eye right corne
-                # ],dtype='double')
-
-                # model_points = np.array([
-                #     (pupil_r_x, pupil_r_y, -135.0),
-                #     (pupil_l_x, pupil_l_y, -135.0),
-                #     (-165.0, 170.0, -135.0),     # Left eye left corner
-                #     (165.0, 170.0, -135.0)
-                # ])
-
-                # axis = np.float32([[500,0,0], 
-                #           [0,500,0], 
-                #           [0,0,500]])
-
-
-                # center = (frame.shape[1]/2, frame.shape[0]/2)
-                # focal_length = center[0] / np.tan(60/2 * np.pi / 180)
-                # camera_matrix = np.array(
-                #                     [[focal_length, 0, center[0]],
-                #                     [0, focal_length, center[1]],
-                #                     [0, 0, 1]], dtype = "double"
-                #                     )
-
-                # dist_coeffs = np.zeros((4,1)) # Assuming no
-                # (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, img_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
-                # imgpts, jac = cv2.projectPoints(axis, rotation_vector, translation_vector, tracker.camera, tracker.dist_coeffs)
-
-                # cv2.line(frame, (int(f.lms[66][1]), int(f.lms[66][0])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
-                # cv2.line(frame, (int(f.lms[67][1]), int(f.lms[67][0])), tuple(imgpts[0].ravel()), (255,0,), 2) #BLUE
-
-                dx = int(f.lms[66][1] - pupil_r_x)
-                dy = int(f.lms[66][0] - pupil_r_y)
-
-                angle = np.deg2rad(math.atan((pupil_r_y-f.lms[66][0])/(f.lms[66][1]-pupil_r_x))*180/math.pi)
-                print(angle)
-                cv2.line(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1]), int(f.lms[66][0])), (0,255,0), 2) #GREEN
-                ####
-
-
-                ##### head pose visualize
-                # image_points = np.array([
-                #             (f.lms[33][1], f.lms[33][0]),     # Nose tip
-                #             (f.lms[8][1], f.lms[8][0]),   # Chin
-                #             (f.lms[45][1], f.lms[45][0]),     # Left eye left corner
-                #             (f.lms[36][1], f.lms[36][0]),     # Right eye right corne
-                #             (f.lms[62][1], f.lms[62][0]),     # Left Mouth corner
-                #             (f.lms[58][1], f.lms[58][0])      # Right mouth corner
-                #         ], dtype="double")
+                #### head pose visualize
+                image_points = np.array([
+                            (f.lms[33][1], f.lms[33][0]),     # Nose tip
+                            (f.lms[8][1], f.lms[8][0]),   # Chin
+                            (f.lms[45][1], f.lms[45][0]),     # Left eye left corner
+                            (f.lms[36][1], f.lms[36][0]),     # Right eye right corne
+                            (f.lms[62][1], f.lms[62][0]),     # Left Mouth corner
+                            (f.lms[58][1], f.lms[58][0])      # Right mouth corner
+                        ], dtype="double")
                         
-                # model_points = np.array([
-                #                         (0.0, 0.0, 0.0),             # Nose tip
-                #                         (0.0, -330.0, -65.0),        # Chin
-                #                         (-165.0, 170.0, -135.0),     # Left eye left corner
-                #                         (165.0, 170.0, -135.0),      # Right eye right corner
-                #                         (-150.0, -150.0, -125.0),    # Left Mouth corner
-                #                         (150.0, -150.0, -125.0)      # Right mouth corner                         
-                #                     ])
+                model_points = np.array([
+                                        (0.0, 0.0, 0.0),             # Nose tip
+                                        (0.0, -330.0, -65.0),        # Chin
+                                        (-165.0, 170.0, -135.0),     # Left eye left corner
+                                        (165.0, 170.0, -135.0),      # Right eye right corner
+                                        (-150.0, -150.0, -125.0),    # Left Mouth corner
+                                        (150.0, -150.0, -125.0)      # Right mouth corner                         
+                                    ])
                                     
-                # axis = np.float32([[500,0,0], 
-                #           [0,500,0], 
-                #           [0,0,500]])
+                axis = np.float32([[500,0,0], 
+                          [0,500,0], 
+                          [0,0,500]])
         
-                # (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, tracker.camera, tracker.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
-                # imgpts, jac = cv2.projectPoints(axis, rotation_vector, translation_vector, tracker.camera, tracker.dist_coeffs)
+                (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, tracker.camera, tracker.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+                imgpts, jac = cv2.projectPoints(axis, rotation_vector, translation_vector, tracker.camera, tracker.dist_coeffs)
 
-                # cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
-                # cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[0].ravel()), (255,0,), 2) #BLUE
-                # cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[2].ravel()), (0,0,255), 2) #RED
+                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[1].ravel()), (0,255,0), 2) #GREEN
+                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[0].ravel()), (255,0,), 2) #BLUE
+                cv2.line(frame, (int(f.lms[30][1]), int(f.lms[30][0])), tuple(imgpts[2].ravel()), (0,0,255), 2) #RED
 
-                ################
+                ###############
                 if not log is None:
                     log.write(f"{frame_count},{now},{width},{height},{args.fps},{face_num},{f.id},{f.eye_blink[0]},{f.eye_blink[1]},{f.conf},{f.success},{f.pnp_error},{f.quaternion[0]},{f.quaternion[1]},{f.quaternion[2]},{f.quaternion[3]},{f.euler[0]},{f.euler[1]},{f.euler[2]},{f.rotation[0]},{f.rotation[1]},{f.rotation[2]},{f.translation[0]},{f.translation[1]},{f.translation[2]}")
                 for (x,y,c) in f.lms:
@@ -446,7 +413,7 @@ try:
                     frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,255,0), 1, cv2.LINE_AA)
 
                     frame = cv2.putText(frame, 'blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,0, 255), 1, cv2.LINE_AA)
-                    frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (255,0, 0), 1)
+                    frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,0,255), 1)
                     frame = cv2.putText(frame, 'mouth: ', (10,80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(f.euler[0], 3)})", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(f.euler[1], 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
