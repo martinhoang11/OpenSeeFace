@@ -162,6 +162,22 @@ def draw_axis(img, yaw, pitch, roll, tdx=None, tdy=None, size = 100):
 
     return img
 
+def get_endpoint(theta, phi, center_x, center_y, length=300):
+    endpoint_x = -1.0 * length * math.cos(theta) * math.sin(phi) + center_x
+    endpoint_y = -1.0 * length * math.sin(theta) + center_y
+    return endpoint_x, endpoint_y
+
+def visualize_eye_result(eye_image, est_gaze, tdx, tdy, center_x, center_y):
+        """Here, we take the original eye eye_image and overlay the estimated gaze."""
+        # output_image = np.copy(eye_image)
+
+
+        endpoint_x, endpoint_y = get_endpoint(est_gaze[0], est_gaze[1], center_x, center_y, 50)
+
+        # print(endpoint_x, endpoint_y)
+        cv2.line(eye_image, (int(tdx), int(tdy)), (int(endpoint_x), int(endpoint_y)), (0, 255, 0))
+        return eye_image
+
 import numpy as np
 import time
 import cv2
@@ -398,7 +414,7 @@ try:
                 else:
                     eye_stt_lr = 'straight'
                 
-                if right_gaze[1] > 2.8 and left_gaze[1] > 2.8:
+                if right_gaze[1] > 2.5 or left_gaze[1] > 2.5:
                     eye_stt_ud = 'up'
                     cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1]), int(f.lms[67][0])-40), (0,255,255), 2, tipLength=0.2) #GREEN
                     cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1]), int(f.lms[66][0])-40), (0,255,255), 2, tipLength=0.2) #GREEN
@@ -410,9 +426,11 @@ try:
                 else:
                     eye_stt_ud = 'straight'
 
+                # visualize_eye_result(frame, (f.lms[66][1]*100, f.lms[66][0]*100), tdx=f.lms[66][1], tdy=f.lms[66][0], center_x=pupil_r_x, center_y=pupil_r_y)
+                # visualize_eye_result(frame, (f.lms[67][1]*100, f.lms[67][0]*100), tdx=f.lms[67][1], tdy=f.lms[67][0], center_x=pupil_l_x, center_y=pupil_l_y)
                 #### head pose visualize
                
-                draw_axis(frame, -f.euler[1]+8, f.euler[0]+10, f.euler[2]+3, tdx=f.lms[30][1], tdy=f.lms[30][0], size = 100)
+                draw_axis(frame, -f.euler[1]+17, f.euler[0]+10, f.euler[2]+3, tdx=f.lms[30][1], tdy=f.lms[30][0], size = 100)
 
                 ###############
                 if not log is None:
