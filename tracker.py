@@ -784,6 +784,7 @@ class Tracker():
 
 
         rmat, _ = cv2.Rodrigues(rotation)
+
         inverse_rotation = np.linalg.inv(rmat)
         t_reference = face_info.face_3d.dot(rmat.transpose())
         t_reference = t_reference + face_info.translation

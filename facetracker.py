@@ -134,6 +134,7 @@ def draw_axis(img, yaw, pitch, roll, tdx=None, tdy=None, size = 100):
     pitch = pitch * np.pi / 180
     yaw = -(yaw * np.pi / 180)
     roll = roll * np.pi / 180
+    
 
     if tdx != None and tdy != None:
         tdx = tdx
@@ -365,6 +366,7 @@ try:
                         frame = cv2.putText(frame, 'Open', (80,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
                 except:
                     pass
+
                 if is_between(0, f.euler[0], 150):
                     pitch_stt = 'up'
                 elif f.euler[0] < 0:
@@ -385,6 +387,40 @@ try:
                     roll_stt = 'left'
                 else:
                     roll_stt = 'straight'
+
+
+                 ###
+                axis = np.float32([[500,0,0], 
+                                [0,500,0], 
+                                [0,0,500]])
+
+                image_points = np.array([
+                            (f.lms[33][1], f.lms[33][0]),     # Nose tip
+                            (f.lms[8][1], f.lms[8][0]),   # Chin
+                            (f.lms[45][1], f.lms[45][0]),     # Left eye left corner
+                            (f.lms[36][1], f.lms[36][0]),     # Right eye right corne
+                            (f.lms[62][1], f.lms[62][0]),     # Left Mouth corner
+                            (f.lms[58][1], f.lms[58][0])      # Right mouth corner
+                        ], dtype="double")
+                              
+                model_points = np.array([
+                                        (0.0, 0.0, 0.0),             # Nose tip
+                                        (0.0, -330.0, -65.0),        # Chin
+                                        (-225.0, 170.0, -135.0),     # Left eye left corner
+                                        (225.0, 170.0, -135.0),      # Right eye right corne
+                                        (-150.0, -150.0, -125.0),    # Left Mouth corner
+                                        (150.0, -150.0, -125.0)      # Right mouth corner                         
+                                    ])
+
+                (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, tracker.camera, tracker.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+                rvec_matrix = cv2.Rodrigues(rotation_vector)[0]
+                proj_matrix = np.hstack((rvec_matrix, translation_vector))
+                eulerAngles = cv2.decomposeProjectionMatrix(proj_matrix)[6] 
+                pitch, yaw, roll = [math.radians(_) for _ in eulerAngles]
+                pitch = math.degrees(math.asin(math.sin(pitch)))
+                roll = -math.degrees(math.asin(math.sin(roll)))
+                yaw = math.degrees(math.asin(math.sin(yaw)))
+                ###
                 ########################
 
                 ###eye blink
@@ -403,26 +439,26 @@ try:
                 
                 if right_gaze[0] > 2 and left_gaze[0] > 0:
                     eye_stt_lr = 'right'
-                    cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1])-40, int(f.lms[67][0])), (0,255,255), 2, tipLength=0.2) #GREEN
-                    cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1])-40, int(f.lms[66][0])), (0,255,255), 2, tipLength=0.2) #GREEN
+                    # cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1])-40, int(f.lms[67][0])), (0,255,255), 2, tipLength=0.2) #GREEN
+                    # cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1])-40, int(f.lms[66][0])), (0,255,255), 2, tipLength=0.2) #GREEN
 
                 elif left_gaze[0] <-2 and right_gaze[0] < -1.5  or left_gaze[0] < -4:
                     eye_stt_lr = 'left'
-                    cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1])+40, int(f.lms[67][0])), (0,255,255), 2, tipLength=0.2) #GREEN
-                    cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1])+40, int(f.lms[66][0])), (0,255,255), 2, tipLength=0.2) #GREEN
+                    # cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1])+40, int(f.lms[67][0])), (0,255,255), 2, tipLength=0.2) #GREEN
+                    # cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1])+40, int(f.lms[66][0])), (0,255,255), 2, tipLength=0.2) #GREEN
 
                 else:
                     eye_stt_lr = 'straight'
                 
                 if right_gaze[1] > 2.5 or left_gaze[1] > 2.5:
                     eye_stt_ud = 'up'
-                    cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1]), int(f.lms[67][0])-40), (0,255,255), 2, tipLength=0.2) #GREEN
-                    cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1]), int(f.lms[66][0])-40), (0,255,255), 2, tipLength=0.2) #GREEN
+                    # cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1]), int(f.lms[67][0])-40), (0,255,255), 2, tipLength=0.2) #GREEN
+                    # cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1]), int(f.lms[66][0])-40), (0,255,255), 2, tipLength=0.2) #GREEN
 
                 elif right_gaze[1] < 0 or left_gaze[1] < 0:
                     eye_stt_ud = 'down'
-                    cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1]), int(f.lms[67][0])+40), (0,255,255), 2, tipLength=0.2) #GREEN
-                    cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1]), int(f.lms[66][0])+40), (0,255,255), 2, tipLength=0.2) #GREEN
+                    # cv2.arrowedLine(frame, (pupil_l_x, pupil_l_y), (int(f.lms[67][1]), int(f.lms[67][0])+40), (0,255,255), 2, tipLength=0.2) #GREEN
+                    # cv2.arrowedLine(frame, (pupil_r_x, pupil_r_y), (int(f.lms[66][1]), int(f.lms[66][0])+40), (0,255,255), 2, tipLength=0.2) #GREEN
                 else:
                     eye_stt_ud = 'straight'
 
@@ -444,9 +480,9 @@ try:
                     frame = cv2.putText(frame, 'blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,0, 255), 1, cv2.LINE_AA)
                     frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,0,255), 1)
                     frame = cv2.putText(frame, 'mouth: ', (10,80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(f.euler[0], 3)})", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(f.euler[1], 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(f.euler[2], 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(pitch, 3)})", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(yaw, 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(roll, 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.putText(frame, f"eye_ud: {eye_stt_ud}", (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.putText(frame, f"eye_lr: {eye_stt_lr}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.putText(frame, f"eye_x_lr: {left_gaze[0]:.3f}/{right_gaze[0]:.3f}", (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
