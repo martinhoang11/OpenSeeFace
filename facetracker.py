@@ -6,6 +6,9 @@ import traceback
 import gc
 import math
 from math import cos, sin
+from scipy.spatial import distance as dist
+import pandas as pd
+
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("-i", "--ip", help="Set IP address for sending tracking data", default="127.0.0.1")
@@ -179,6 +182,29 @@ def visualize_eye_result(eye_image, est_gaze, tdx, tdy, center_x, center_y):
         cv2.line(eye_image, (int(tdx), int(tdy)), (int(endpoint_x), int(endpoint_y)), (0, 255, 0))
         return eye_image
 
+def eye_aspect_ratio(eye):
+    A = dist.euclidean(eye[1], eye[5])
+    B = dist.euclidean(eye[2], eye[4])
+
+    C = dist.euclidean(eye[0], eye[3])
+
+    ear = (A + B) / (2.0 * C)
+    return ear
+
+def swap_xy(arr):
+    arr[0], arr[1] = arr[1], arr[0]
+    return arr
+
+def moving_av(mylist, N):
+    cumsum, moving_aves = [0], []
+    for i, x in enumerate(mylist, 1):
+        cumsum.append(cumsum[i-1] + x)
+        if i>=N:
+            moving_ave = (cumsum[i] - cumsum[i-N])/N
+            #can do stuff with moving_ave here
+            moving_aves.append(moving_ave)
+    return moving_aves
+
 import numpy as np
 import time
 import cv2
@@ -210,7 +236,7 @@ target_port = args.port
 if args.faces >= 40:
     print("Transmission of tracking data over network is not supported with 40 or more faces.")
 
-fps = 0
+fps = 24
 dcap = None
 use_dshowcapture_flag = False
 if os.name == 'nt':
@@ -237,6 +263,14 @@ tracking_time = 0.0
 tracking_frames = 0
 frame_count = 0
 eye_blink_frames = 0
+eye_blink_lst = []
+eye_blink_temp = []
+EYE_AR_THRESH = 0.30
+EYE_AR_CONSEC_FRAMES = 2
+COUNTER = 0
+array_blink_threshold = list()
+ear_list = list()
+col=['F1',"F2","F3","F4","F5",'F6',"F7", "F8", "F9", "F10", "F11", "F12", "F13"]
 
 features = ["eye_l", "eye_r", "eyebrow_steepness_l", "eyebrow_updown_l", "eyebrow_quirk_l", "eyebrow_steepness_r", "eyebrow_updown_r", "eyebrow_quirk_r", "mouth_corner_updown_l", "mouth_corner_inout_l", "mouth_corner_updown_r", "mouth_corner_inout_r", "mouth_open", "mouth_wide"]
 
@@ -303,7 +337,7 @@ try:
 
         attempt = 0
         need_reinit = 0
-        frame_count += 1
+        # frame_count += 1
         now = time.time()
 
         if first:
@@ -322,6 +356,9 @@ try:
                 total_tracking_time += inference_time
                 tracking_time += inference_time / len(faces)
                 tracking_frames += 1
+            else:
+                ear_list.append(np.nan)
+                array_blink_threshold.append(np.nan)
             packet = bytearray()
             detected = False
             for face_num, f in enumerate(faces):
@@ -389,45 +426,23 @@ try:
                     roll_stt = 'straight'
 
 
-                 ###
-                axis = np.float32([[500,0,0], 
-                                [0,500,0], 
-                                [0,0,500]])
-
-                image_points = np.array([
-                            (f.lms[33][1], f.lms[33][0]),     # Nose tip
-                            (f.lms[8][1], f.lms[8][0]),   # Chin
-                            (f.lms[45][1], f.lms[45][0]),     # Left eye left corner
-                            (f.lms[36][1], f.lms[36][0]),     # Right eye right corne
-                            (f.lms[62][1], f.lms[62][0]),     # Left Mouth corner
-                            (f.lms[58][1], f.lms[58][0])      # Right mouth corner
-                        ], dtype="double")
-                              
-                model_points = np.array([
-                                        (0.0, 0.0, 0.0),             # Nose tip
-                                        (0.0, -330.0, -65.0),        # Chin
-                                        (-225.0, 170.0, -135.0),     # Left eye left corner
-                                        (225.0, 170.0, -135.0),      # Right eye right corne
-                                        (-150.0, -150.0, -125.0),    # Left Mouth corner
-                                        (150.0, -150.0, -125.0)      # Right mouth corner                         
-                                    ])
-
-                (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, tracker.camera, tracker.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
-                rvec_matrix = cv2.Rodrigues(rotation_vector)[0]
-                proj_matrix = np.hstack((rvec_matrix, translation_vector))
-                eulerAngles = cv2.decomposeProjectionMatrix(proj_matrix)[6] 
-                pitch, yaw, roll = [math.radians(_) for _ in eulerAngles]
-                pitch = math.degrees(math.asin(math.sin(pitch)))
-                roll = -math.degrees(math.asin(math.sin(roll)))
-                yaw = math.degrees(math.asin(math.sin(yaw)))
                 ###
-                ########################
+
+                ###
+                if f.euler[0] > 0:
+                    pitch = f.euler[0] - 170
+                else:
+                    pitch = f.euler[0] + 170
+                yaw = f.euler[1] - 18
+                roll = f.euler[2] - 86
+                ###
 
                 ###eye blink
                 if eye_blink_frames >= 3:
                     blink_count += 1
                     eye_blink_frames = 0
-                
+                ####
+
                 ###eye gaze
                 pupil_r_x = int((f.lms[36][1] + f.lms[39][1]) / 2)
                 pupil_r_y = int((f.lms[36][0] + f.lms[39][0]) / 2)
@@ -467,8 +482,30 @@ try:
                 #### head pose visualize
                
                 draw_axis(frame, -f.euler[1]+17, f.euler[0]+10, f.euler[2]+3, tdx=f.lms[30][1], tdy=f.lms[30][0], size = 100)
+                #### save ear to csv
+                # if len(eye_blink_temp) == 13:
+                #     eye_blink_lst.append(eye_blink_temp)
+                #     eye_blink_temp = []
+                # else:
+                #     eye_blink_temp.append(np.average(f.eye_blink))
 
-                ###############
+                ear = np.average(f.eye_blink)
+                ear_list.append(ear)
+                array_blink_threshold.append(0) 
+
+                if ear < EYE_AR_THRESH:
+                    COUNTER += 1
+                # otherwise, the eye aspect ratio is not below the blink
+                # threshold
+                else:
+                    # if the eyes were closed for a sufficient number of
+                    # then increment the total number of blinks
+                    if COUNTER >= EYE_AR_CONSEC_FRAMES:
+                        array_blink_threshold[frame_count]=1
+                    # reset the eye frame counter
+                    COUNTER = 0
+                ######
+                frame_count += 1
                 if not log is None:
                     log.write(f"{frame_count},{now},{width},{height},{args.fps},{face_num},{f.id},{f.eye_blink[0]},{f.eye_blink[1]},{f.conf},{f.success},{f.pnp_error},{f.quaternion[0]},{f.quaternion[1]},{f.quaternion[2]},{f.quaternion[3]},{f.euler[0]},{f.euler[1]},{f.euler[2]},{f.rotation[0]},{f.rotation[1]},{f.rotation[2]},{f.translation[0]},{f.translation[1]},{f.translation[2]}")
                 for (x,y,c) in f.lms:
@@ -487,6 +524,7 @@ try:
                     frame = cv2.putText(frame, f"eye_lr: {eye_stt_lr}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.putText(frame, f"eye_x_lr: {left_gaze[0]:.3f}/{right_gaze[0]:.3f}", (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.putText(frame, f"eye_y_ud: {left_gaze[1]:.3f}/{right_gaze[1]:.3f}", (10, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"EAR: {f.eye_blink[0]:.3f}-{f.eye_blink[1]:.3f}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
 
                 if args.visualize > 2:
                     frame = cv2.putText(frame, f"{f.conf:.4f}", (int(f.bbox[0] + 18), int(f.bbox[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
@@ -642,6 +680,7 @@ try:
                 time.sleep(sleep_time)
             duration = time.perf_counter() - frame_time
         frame_time = time.perf_counter()
+        
 except KeyboardInterrupt:
     if args.silent == 0:
         print("Quitting")
@@ -655,3 +694,45 @@ if args.silent == 0 and tracking_frames > 0:
     average_tracking_time = 1000 * tracking_time / tracking_frames
     print(f"Average tracking time per detected face: {average_tracking_time:.2f} ms")
     print(f"Tracking time: {total_tracking_time:.3f} s\nFrames: {tracking_frames}")
+
+
+
+
+
+    # df = pd.DataFrame(eye_blink_lst, columns=col)
+    # df.to_csv('test_model_4_13f.csv')
+    mov_ear_3=moving_av(ear_list,3)
+    mov_ear_5=moving_av(ear_list,5)
+    mov_ear_7=moving_av(ear_list,7)
+
+    ear_list = pd.Series(ear_list, index=range(0, len(ear_list)))
+    array_blink_threshold=pd.Series(array_blink_threshold,index=range(0, len(array_blink_threshold)))
+
+    mov_ear_3=pd.Series(mov_ear_3, index=range(2, len(mov_ear_3)+2))
+    mov_ear_5=pd.Series(mov_ear_5, index=range(3, len(mov_ear_5)+3))
+    mov_ear_7=pd.Series(mov_ear_7, index=range(4, len(mov_ear_7)+4))
+
+    ear_list = pd.DataFrame(ear_list)
+    ear_list["threshold"] = array_blink_threshold
+    ear_list["mov_ear_3"] = mov_ear_3
+    ear_list["mov_ear_5"] = mov_ear_5
+    ear_list["mov_ear_7"] = mov_ear_7
+    ear_list.columns = ["ear", "threshold", "mov_ear_3","mov_ear_5","mov_ear_7"]
+    #ear_list = ear_list.fillna(0)
+    #mask = ear_list.tag == 0
+    #ear_list.tag = ear_list.tag.where(mask, 1)
+
+    ear_list.index.name="frame"
+    '''
+    try:
+        ear_list.to_csv("non_training_data_raw_data/{}/{}.csv".format(
+                args["video"][6:-4]), index=True, header=True)
+    except FileNotFoundError:
+        ear_list.to_csv("non_training_data_raw_data/{}.csv".format(
+                args["video"][7:-4]), index=True, header=True)
+    # do a bit of cleanup
+    cv2.destroyAllWindows()
+    vs.stop()
+    '''
+    ear_list.to_csv("model_4.csv",index=True, header=True)
+
