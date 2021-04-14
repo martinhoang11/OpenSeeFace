@@ -27,7 +27,8 @@ class VideoReader():
         return self.cap.read()
     def close(self):
         self.cap.release()
-
+    def get_fps(self):
+        return self.cap.get(5)
 class EscapiReader(VideoReader):
     def __init__(self, capture, width, height, fps):
         self.device = None

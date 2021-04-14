@@ -191,7 +191,9 @@ def eye_aspect_ratio(eye):
     ear = (A + B) / (2.0 * C)
     return ear
 
-def swap_xy(arr):
+def swap_xy(corr):
+    arr = copy.deepcopy(corr)
+
     arr[0], arr[1] = arr[1], arr[0]
     return arr
 
@@ -248,8 +250,9 @@ if os.name == 'nt':
         fps = min(fps, input_reader.device.get_fps())
 else:
     input_reader = InputReader(args.capture, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag)
+
 if type(input_reader.reader) == VideoReader:
-    fps = 0
+    fps = 0.0
 
 log = None
 out = None
@@ -265,9 +268,11 @@ frame_count = 0
 eye_blink_frames = 0
 eye_blink_lst = []
 eye_blink_temp = []
-EYE_AR_THRESH = 0.30
-EYE_AR_CONSEC_FRAMES = 2
+EYE_AR_THRESH = 0.2
+EYE_AR_CONSEC_FRAMES = 1
 COUNTER = 0
+COUNTER_ORIGIN = 0
+
 array_blink_threshold = list()
 ear_list = list()
 col=['F1',"F2","F3","F4","F5",'F6',"F7", "F8", "F9", "F10", "F11", "F12", "F13"]
@@ -299,6 +304,7 @@ try:
     failures = 0
     source_name = input_reader.name
     blink_count = 0
+    blink_count_origin = 0
     while repeat or input_reader.is_open():
         if not input_reader.is_open() or need_reinit == 1:
             input_reader = InputReader(args.capture, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag, dcap=dcap)
@@ -312,7 +318,6 @@ try:
             time.sleep(0.02)
             continue
         
-
         ret, frame = input_reader.read()
         # frame = cv2.flip(frame,1)
         #2 -50 - 0.5 -20,-50
@@ -356,9 +361,9 @@ try:
                 total_tracking_time += inference_time
                 tracking_time += inference_time / len(faces)
                 tracking_frames += 1
-            else:
-                ear_list.append(np.nan)
-                array_blink_threshold.append(np.nan)
+            # else:
+            #     ear_list.append(np.nan)
+            #     array_blink_threshold.append(np.nan)
             packet = bytearray()
             detected = False
             for face_num, f in enumerate(faces):
@@ -400,7 +405,7 @@ try:
                 ###mouth opening - Thresh hold
                 try:
                     if f.current_features['mouth_open'] > 0.5 and f.current_features['mouth_wide'] < 0.1:
-                        frame = cv2.putText(frame, 'Open', (80,80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
+                        frame = cv2.putText(frame, 'Open', (80,120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
                 except:
                     pass
 
@@ -438,9 +443,9 @@ try:
                 ###
 
                 ###eye blink
-                if eye_blink_frames >= 3:
-                    blink_count += 1
-                    eye_blink_frames = 0
+                # if eye_blink_frames >= 3:
+                #     blink_count += 1
+                #     eye_blink_frames = 0
                 ####
 
                 ###eye gaze
@@ -489,11 +494,16 @@ try:
                 # else:
                 #     eye_blink_temp.append(np.average(f.eye_blink))
 
-                ear = np.average(f.eye_blink)
-                ear_list.append(ear)
-                array_blink_threshold.append(0) 
+                r_eye = [swap_xy(f.lms[36]), swap_xy(f.lms[37]), swap_xy(f.lms[38]), swap_xy(f.lms[39]), swap_xy(f.lms[40]), swap_xy(f.lms[41])]
+                l_eye = [swap_xy(f.lms[42]), swap_xy(f.lms[43]), swap_xy(f.lms[44]), swap_xy(f.lms[45]), swap_xy(f.lms[46]), swap_xy(f.lms[47])]
+                ear_origin = np.average((eye_aspect_ratio(r_eye), eye_aspect_ratio(l_eye)))
 
-                if ear < EYE_AR_THRESH:
+
+                ear = np.average(f.eye_blink)
+                # # ear_list.append(ear)
+                # # array_blink_threshold.append(0) 
+
+                if ear < 0.7:
                     COUNTER += 1
                 # otherwise, the eye aspect ratio is not below the blink
                 # threshold
@@ -501,9 +511,22 @@ try:
                     # if the eyes were closed for a sufficient number of
                     # then increment the total number of blinks
                     if COUNTER >= EYE_AR_CONSEC_FRAMES:
-                        array_blink_threshold[frame_count]=1
+                        blink_count += 1
                     # reset the eye frame counter
                     COUNTER = 0
+                
+                if ear_origin < 0.19:
+                    COUNTER_ORIGIN += 1
+                # otherwise, the eye aspect ratio is not below the blink
+                # threshold`
+                else:
+                    # if the eyes were closed for a sufficient number of
+                    # then increment the total number of blinks
+                    if COUNTER_ORIGIN >= EYE_AR_CONSEC_FRAMES:
+                        blink_count_origin += 1
+                    # reset the eye frame counter
+                    COUNTER_ORIGIN = 0
+
                 ######
                 frame_count += 1
                 if not log is None:
@@ -512,19 +535,19 @@ try:
                     packet.extend(bytearray(struct.pack("f", c)))
                 if args.visualize > 1:
                     frame = cv2.putText(frame, str(f.id), (int(f.bbox[0]), int(f.bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,0))
-                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,255,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,255,0), 1, cv2.LINE_AA)
 
-                    frame = cv2.putText(frame, 'blink: ' + str(blink_count), (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,0, 255), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, 'blink: ' + str(blink_count) + ' - ' + str(blink_count_origin), (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,0,255), 1)
-                    frame = cv2.putText(frame, 'mouth: ', (10,80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(pitch, 3)})", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(yaw, 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(roll, 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_ud: {eye_stt_ud}", (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_lr: {eye_stt_lr}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_x_lr: {left_gaze[0]:.3f}/{right_gaze[0]:.3f}", (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_y_ud: {left_gaze[1]:.3f}/{right_gaze[1]:.3f}", (10, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"EAR: {f.eye_blink[0]:.3f}-{f.eye_blink[1]:.3f}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, 'mouth: ', (10,120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(pitch, 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(yaw, 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(roll, 3)})", (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_ud: {eye_stt_ud}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_lr: {eye_stt_lr}", (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_x_lr: {left_gaze[0]:.3f}/{right_gaze[0]:.3f}", (10, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_y_ud: {left_gaze[1]:.3f}/{right_gaze[1]:.3f}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"EAR: {f.eye_blink[0]:.3f}-{f.eye_blink[1]:.3f}", (10, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
 
                 if args.visualize > 2:
                     frame = cv2.putText(frame, f"{f.conf:.4f}", (int(f.bbox[0] + 18), int(f.bbox[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
@@ -666,6 +689,7 @@ try:
             if failures > 30:
                 break
 
+
         collected = False
         del frame
 
@@ -701,38 +725,38 @@ if args.silent == 0 and tracking_frames > 0:
 
     # df = pd.DataFrame(eye_blink_lst, columns=col)
     # df.to_csv('test_model_4_13f.csv')
-    mov_ear_3=moving_av(ear_list,3)
-    mov_ear_5=moving_av(ear_list,5)
-    mov_ear_7=moving_av(ear_list,7)
+    # mov_ear_3=moving_av(ear_list,3)
+    # mov_ear_5=moving_av(ear_list,5)
+    # mov_ear_7=moving_av(ear_list,7)
 
-    ear_list = pd.Series(ear_list, index=range(0, len(ear_list)))
-    array_blink_threshold=pd.Series(array_blink_threshold,index=range(0, len(array_blink_threshold)))
+    # ear_list = pd.Series(ear_list, index=range(0, len(ear_list)))
+    # array_blink_threshold=pd.Series(array_blink_threshold,index=range(0, len(array_blink_threshold)))
 
-    mov_ear_3=pd.Series(mov_ear_3, index=range(2, len(mov_ear_3)+2))
-    mov_ear_5=pd.Series(mov_ear_5, index=range(3, len(mov_ear_5)+3))
-    mov_ear_7=pd.Series(mov_ear_7, index=range(4, len(mov_ear_7)+4))
+    # mov_ear_3=pd.Series(mov_ear_3, index=range(2, len(mov_ear_3)+2))
+    # mov_ear_5=pd.Series(mov_ear_5, index=range(3, len(mov_ear_5)+3))
+    # mov_ear_7=pd.Series(mov_ear_7, index=range(4, len(mov_ear_7)+4))
 
-    ear_list = pd.DataFrame(ear_list)
-    ear_list["threshold"] = array_blink_threshold
-    ear_list["mov_ear_3"] = mov_ear_3
-    ear_list["mov_ear_5"] = mov_ear_5
-    ear_list["mov_ear_7"] = mov_ear_7
-    ear_list.columns = ["ear", "threshold", "mov_ear_3","mov_ear_5","mov_ear_7"]
-    #ear_list = ear_list.fillna(0)
-    #mask = ear_list.tag == 0
-    #ear_list.tag = ear_list.tag.where(mask, 1)
+    # ear_list = pd.DataFrame(ear_list)
+    # ear_list["threshold"] = array_blink_threshold
+    # ear_list["mov_ear_3"] = mov_ear_3
+    # ear_list["mov_ear_5"] = mov_ear_5
+    # ear_list["mov_ear_7"] = mov_ear_7
+    # ear_list.columns = ["ear", "threshold", "mov_ear_3","mov_ear_5","mov_ear_7"]
+    # #ear_list = ear_list.fillna(0)
+    # #mask = ear_list.tag == 0
+    # #ear_list.tag = ear_list.tag.where(mask, 1)
 
-    ear_list.index.name="frame"
-    '''
-    try:
-        ear_list.to_csv("non_training_data_raw_data/{}/{}.csv".format(
-                args["video"][6:-4]), index=True, header=True)
-    except FileNotFoundError:
-        ear_list.to_csv("non_training_data_raw_data/{}.csv".format(
-                args["video"][7:-4]), index=True, header=True)
-    # do a bit of cleanup
-    cv2.destroyAllWindows()
-    vs.stop()
-    '''
-    ear_list.to_csv("model_4.csv",index=True, header=True)
+    # ear_list.index.name="frame"
+    # '''
+    # try:
+    #     ear_list.to_csv("non_training_data_raw_data/{}/{}.csv".format(
+    #             args["video"][6:-4]), index=True, header=True)
+    # except FileNotFoundError:
+    #     ear_list.to_csv("non_training_data_raw_data/{}.csv".format(
+    #             args["video"][7:-4]), index=True, header=True)
+    # # do a bit of cleanup
+    # cv2.destroyAllWindows()
+    # vs.stop()
+    # '''
+    # ear_list.to_csv("model_4.csv",index=True, header=True)
 

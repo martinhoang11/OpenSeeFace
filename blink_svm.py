@@ -15,7 +15,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("-v", "--video", type=str, default="",
 	help="path to input video file")
 args = vars(ap.parse_args())
-DATA = pd.read_csv('output_SVM_model_2.csv')
+DATA = pd.read_csv(r"C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\csv\\output_SVM_model_2_12f.csv")
 ################################################
 FRAME_LIST = list(DATA.index)
 BLINK_LIST = list(DATA.blink)
@@ -63,7 +63,7 @@ result=BLINK_LIST
 our_video=cv2.VideoCapture(args["video"])
 width  = int(our_video.get(3))  # float `width`
 height = int(our_video.get(4))
-out = cv2.VideoWriter('output_vis.mp4', cv2.VideoWriter_fourcc('F','F','V','1'), 20, (640, 840))
+out = cv2.VideoWriter(r"C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\video\\output_model_2_12f.mp4", cv2.VideoWriter_fourcc('F','F','V','1'), 20, (640, 840))
 
 fps=our_video.get(cv2.CAP_PROP_FPS)
 fps=int(fps)
