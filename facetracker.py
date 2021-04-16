@@ -7,7 +7,13 @@ import gc
 import math
 from math import cos, sin
 from scipy.spatial import distance as dist
+import imutils
 import pandas as pd
+from rt_gene.estimate_gaze_tensorflow import GazeEstimator
+from rt_gene.tracker_generic import GenericTracker
+import matplotlib.pyplot as plt
+from rt_gene.gaze_tools import get_phi_theta_from_euler, limit_yaw
+from rt_gene.gaze_tools_standalone import euler_from_matrix
 
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -207,6 +213,116 @@ def moving_av(mylist, N):
             moving_aves.append(moving_ave)
     return moving_aves
 
+def get_eye_area(img, eye_lms, name=None, visualize=False):
+    x_min = int(min(x[1] for x in eye_lms)) - 5
+    x_max = max(x[1] for x in eye_lms)
+    y_min = int(min(x[0] for x in eye_lms)) - 5
+    y_max = max(x[0] for x in eye_lms)
+
+    h = int(y_max - y_min) + 5
+    w = int(x_max - x_min)
+
+    # cv2.rectangle(img, (x_min, y_min), (x_min+w, y_min+h), (0, 255, 0), 2)
+    roi = img[y_min:y_min + h, x_min:x_min + w]
+    # roi = imutils.resize(roi, width=250, inter=cv2.INTER_CUBIC)
+    if visualize == True:
+        cv2.imshow(name, roi)
+
+    roi = cv2.resize(roi, (60,36), interpolation=cv2.INTER_CUBIC)
+    return np.array(roi)
+
+def input_from_image(cv_image):
+    """This method converts an eye_img_msg provided by the landmark estimator, and converts it to a format
+    suitable for the gaze network."""
+    currimg = cv_image.reshape(36, 60, 3, order='F')
+    currimg = currimg.astype(np.float32)
+    testimg = np.zeros((36, 60, 3))
+    testimg[:, :, 0] = currimg[:, :, 0] - 103.939
+    testimg[:, :, 1] = currimg[:, :, 1] - 116.779
+    testimg[:, :, 2] = currimg[:, :, 2] - 123.68
+    return testimg
+
+def visualize_eye_result(eye_image, est_gaze):
+    """Here, we take the original eye eye_image and overlay the estimated gaze."""
+    output_image = np.copy(eye_image)
+
+    center_x = output_image.shape[1] / 2
+    center_y = output_image.shape[0] / 2
+
+    endpoint_x, endpoint_y = get_endpoint(est_gaze[0], est_gaze[1], center_x, center_y, 50)
+
+    cv2.line(output_image, (int(center_x), int(center_y)), (int(endpoint_x), int(endpoint_y)), (255, 0, 0))
+    return output_image
+
+def get_normalised_eye_landmarks(landmarks, box):
+    eye_indices = np.array([36, 39, 42, 45])
+    transformed_landmarks = landmarks[eye_indices]
+    transformed_landmarks[:, 0] -= box[0]
+    transformed_landmarks[:, 1] -= box[1]
+    return transformed_landmarks
+
+def get_eye_image_from_landmarks(face_bb, face_img, landmarks, eye_image_size):
+    eye_landmarks = get_normalised_eye_landmarks(landmarks, face_bb)
+    margin_ratio = 1.0
+    desired_ratio = float(eye_image_size[1]) / float(eye_image_size[0]) / 2.0
+
+    try:
+    # Get the width of the eye, and compute how big the margin should be according to the width
+        lefteye_width = eye_landmarks[3][0] - eye_landmarks[2][0]
+        righteye_width = eye_landmarks[1][0] - eye_landmarks[0][0]
+
+        lefteye_center_x = eye_landmarks[2][0] + lefteye_width / 2
+        righteye_center_x = eye_landmarks[0][0] + righteye_width / 2
+        lefteye_center_y = (eye_landmarks[2][1] + eye_landmarks[3][1]) / 2.0
+        righteye_center_y = (eye_landmarks[1][1] + eye_landmarks[0][1]) / 2.0
+
+        aligned_face, rot_matrix = GenericTracker.align_face_to_eyes(face_img, right_eye_center=(righteye_center_x, righteye_center_y),
+                                                                        left_eye_center=(lefteye_center_x, lefteye_center_y))
+        # rotate the eye landmarks by same affine rotation to extract the correct landmarks
+        ones = np.ones(shape=(len(eye_landmarks), 1))
+        # points_ones = np.hstack([eye_landmarks, ones])
+        transformed_eye_landmarks = rot_matrix.dot(eye_landmarks.T).T
+
+        # recompute widths, margins and centers
+        lefteye_width = transformed_eye_landmarks[3][0] - transformed_eye_landmarks[2][0]
+        righteye_width = transformed_eye_landmarks[1][0] - transformed_eye_landmarks[0][0]
+        lefteye_margin, righteye_margin = lefteye_width * margin_ratio, righteye_width * margin_ratio
+        lefteye_center_y = (transformed_eye_landmarks[2][1] + transformed_eye_landmarks[3][1]) / 2.0
+        righteye_center_y = (transformed_eye_landmarks[1][1] + transformed_eye_landmarks[0][1]) / 2.0
+
+        # Now compute the bounding boxes
+        # The left / right x-coordinates are computed as the landmark position plus/minus the margin
+        # The bottom / top y-coordinates are computed according to the desired ratio, as the width of the image is known
+        left_bb = np.zeros(4, dtype=np.int)
+        left_bb[0] = transformed_eye_landmarks[2][0] - lefteye_margin / 2.0
+        left_bb[1] = lefteye_center_y - (lefteye_width + lefteye_margin) * desired_ratio
+        left_bb[2] = transformed_eye_landmarks[3][0] + lefteye_margin / 2.0
+        left_bb[3] = lefteye_center_y + (lefteye_width + lefteye_margin) * desired_ratio
+
+        right_bb = np.zeros(4, dtype=np.int)
+        right_bb[0] = transformed_eye_landmarks[0][0] - righteye_margin / 2.0
+        right_bb[1] = righteye_center_y - (righteye_width + righteye_margin) * desired_ratio
+        right_bb[2] = transformed_eye_landmarks[1][0] + righteye_margin / 2.0
+        right_bb[3] = righteye_center_y + (righteye_width + righteye_margin) * desired_ratio
+
+        # Extract the eye images from the aligned image
+        left_eye_color = aligned_face[left_bb[1]:left_bb[3], left_bb[0]:left_bb[2], :]
+        right_eye_color = aligned_face[right_bb[1]:right_bb[3], right_bb[0]:right_bb[2], :]
+
+        # So far, we have only ensured that the ratio is correct. Now, resize it to the desired size.
+        left_eye_color_resized = cv2.resize(left_eye_color, eye_image_size, interpolation=cv2.INTER_CUBIC)
+        right_eye_color_resized = cv2.resize(right_eye_color, eye_image_size, interpolation=cv2.INTER_CUBIC)
+
+        return left_eye_color_resized, right_eye_color_resized, left_bb, right_bb
+    except (ValueError, TypeError, cv2.error) as e:
+        print('ERROR')
+        return None, None, None, None
+
+def get_image_from_bb(img, bb):
+    bb = list(map(int, bb))
+    roi = img[bb[1]:bb[1] + bb[3], bb[0]:bb[0] + bb[2]]
+    return np.array(roi)
+
 import numpy as np
 import time
 import cv2
@@ -227,7 +343,7 @@ if args.benchmark > 0:
         total = 0.0
         for i in range(100):
             start = time.perf_counter()
-            r = tracker.predict(im)
+            r, rmat = tracker.predict(im)
             total += time.perf_counter() - start
         print(1. / (total / 100.))
     sys.exit(0)
@@ -273,6 +389,7 @@ EYE_AR_CONSEC_FRAMES = 1
 COUNTER = 0
 COUNTER_ORIGIN = 0
 
+
 array_blink_threshold = list()
 ear_list = list()
 col=['F1',"F2","F3","F4","F5",'F6',"F7", "F8", "F9", "F10", "F11", "F12", "F13"]
@@ -292,6 +409,7 @@ if args.log_data != "":
     log.flush()
 
 is_camera = args.capture == str(try_int(args.capture))
+gaze_estimator = GazeEstimator("/cpu:0", 'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\Model_allsubjects1.h5')
 
 try:
     attempt = 0
@@ -319,6 +437,7 @@ try:
             continue
         
         ret, frame = input_reader.read()
+        eye_gaze_frame = copy.deepcopy(frame)
         # frame = cv2.flip(frame,1)
         #2 -50 - 0.5 -20,-50
         # frame = cv2.convertScaleAbs(frame, -1, 0.5, -20)
@@ -355,7 +474,7 @@ try:
 
         try:
             inference_start = time.perf_counter()
-            faces = tracker.predict(frame)
+            faces, rmat = tracker.predict(frame)
             if len(faces) > 0:
                 inference_time = (time.perf_counter() - inference_start)
                 total_tracking_time += inference_time
@@ -366,6 +485,10 @@ try:
             #     array_blink_threshold.append(np.nan)
             packet = bytearray()
             detected = False
+            r_eye_roi_resize = []
+            l_eye_roi_resize = []
+            head_list = []
+
             for face_num, f in enumerate(faces):
                 f = copy.copy(f)
                 f.id += args.face_id_offset
@@ -528,6 +651,33 @@ try:
                     COUNTER_ORIGIN = 0
 
                 ######
+
+                _rotation_matrix = np.matmul(rmat, np.array([[0, 1, 0], [0, 0, -1], [-1, 0, 0]]))
+                _m = np.zeros((4, 4))
+                _rotation_matrix = np.matmul(_rotation_matrix, np.array([[0, 1, 0], [0, 0, -1], [-1, 0, 0]]))
+                _m[:3, :3] = _rotation_matrix
+                _m[3, 3] = 1
+                # Go from camera space to ROS space
+                _camera_to_ros = [[0.0, 0.0, 1.0, 0.0],
+                                [-1.0, 0.0, 0.0, 0.0],
+                                [0.0, -1.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0, 1.0]]
+
+                roll_pitch_yaw = list(euler_from_matrix(np.dot(_camera_to_ros, _m)))
+                roll_pitch_yaw = limit_yaw(roll_pitch_yaw)
+
+                phi_head, theta_head = get_phi_theta_from_euler(roll_pitch_yaw)
+
+
+                # le_c, re_c, _, _ = get_eye_image_from_landmarks(f.bbox, get_image_from_bb(frame, f.bbox), f.lms, (60,36))
+                re_c = get_eye_area(eye_gaze_frame, [f.lms[36], f.lms[37], f.lms[38], f.lms[39], f.lms[40], f.lms[41]])
+                le_c = get_eye_area(eye_gaze_frame, [f.lms[42], f.lms[43], f.lms[44], f.lms[45], f.lms[46], f.lms[47]])
+
+                r_eye_roi_resize.append(input_from_image(re_c))
+                l_eye_roi_resize.append(input_from_image(le_c))
+                head_list.append([phi_head, theta_head])
+
+                #########
                 frame_count += 1
                 if not log is None:
                     log.write(f"{frame_count},{now},{width},{height},{args.fps},{face_num},{f.id},{f.eye_blink[0]},{f.eye_blink[1]},{f.conf},{f.success},{f.pnp_error},{f.quaternion[0]},{f.quaternion[1]},{f.quaternion[2]},{f.quaternion[3]},{f.euler[0]},{f.euler[1]},{f.euler[2]},{f.rotation[0]},{f.rotation[1]},{f.rotation[2]},{f.translation[0]},{f.translation[1]},{f.translation[2]}")
@@ -618,6 +768,20 @@ try:
                     log.write("\r\n")
                     log.flush()
 
+            ##########eye gaze
+            gaze_est = gaze_estimator.estimate_gaze_twoeyes(inference_input_left_list=l_eye_roi_resize,
+                                                    inference_input_right_list=r_eye_roi_resize,
+                                                    inference_headpose_list=head_list)
+            
+            for gaze, headpose in zip(gaze_est.tolist(), head_list):
+                # Build visualizations
+                r_gaze_img = gaze_estimator.visualize_eye_result(re_c, gaze)
+                l_gaze_img = gaze_estimator.visualize_eye_result(le_c, gaze)
+                s_gaze_img = np.concatenate((cv2.resize(r_gaze_img, (112,112)), cv2.resize(l_gaze_img, (112,112))), axis=1)
+                
+                cv2.imshow('eye_gaze', s_gaze_img)
+    
+            #########3
             if detected and len(faces) < 40:
                 sock.sendto(packet, (target_ip, target_port))
 
