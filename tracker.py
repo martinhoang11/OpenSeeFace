@@ -857,6 +857,7 @@ class Tracker():
         euler = cv2.RQDecomp3x3(rmat)[0]
 
         return True, matrix_to_quaternion(rmat), euler, pnp_error, pts_3d, lms, rmat
+        # return True, matrix_to_quaternion(rmat), euler, pnp_error, pts_3d, lms
 
     def preprocess(self, im, crop):
         x1, y1, x2, y2 = crop
@@ -1171,6 +1172,7 @@ class Tracker():
         for face_info in self.face_info:
             if face_info.alive and face_info.conf > self.threshold:
                 face_info.success, face_info.quaternion, face_info.euler, face_info.pnp_error, face_info.pts_3d, face_info.lms, rmat = self.estimate_depth(face_info)
+                # face_info.success, face_info.quaternion, face_info.euler, face_info.pnp_error, face_info.pts_3d, face_info.lms = self.estimate_depth(face_info)
                 face_info.adjust_3d()
                 lms = face_info.lms[:, 0:2]
                 x1, y1 = tuple(lms[0:66].min(0))
@@ -1209,3 +1211,4 @@ class Tracker():
 
         results = sorted(results, key=lambda x: x.id)
         return results, rmat
+        # return results

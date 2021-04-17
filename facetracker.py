@@ -50,10 +50,11 @@ parser.add_argument("--video-fps", type=float, help="This sets the frame rate of
 parser.add_argument("--raw-rgb", type=int, help="When this is set, raw RGB frames of the size given with \"-W\" and \"-H\" are read from standard input instead of reading a video", default=0)
 parser.add_argument("--log-data", help="You can set a filename to which tracking data will be logged here", default="")
 parser.add_argument("--log-output", help="You can set a filename to console output will be logged here", default="")
-parser.add_argument("--ensamble", type=int, help="You can set a filename to console output will be logged here", default=0)
+parser.add_argument("--ensamble", type=int, help="Set to 1 to use ensamble models(4 models)", default=0)
 parser.add_argument("--model", type=int, help="This can be used to select the tracking model. Higher numbers are models with better tracking quality, but slower speed, except for model 4, which is wink optimized. Models 1 and 0 tend to be too rigid for expression and blink detection. Model -2 is roughly equivalent to model 1, but faster. Model -3 is between models 0 and -1.", default=3, choices=[-3, -2, -1, 0, 1, 2, 3, 4])
 parser.add_argument("--model-dir", help="This can be used to specify the path to the directory containing the .onnx model files", default=None)
 parser.add_argument("--gaze-tracking", type=int, help="When set to 1, experimental blink detection and gaze tracking are enabled, which makes things slightly slower", default=1)
+parser.add_argument("--eye-gaze", type=int, help="When 1 eye gaze estimation will be calculated", default=0)
 parser.add_argument("--face-id-offset", type=int, help="When set, this offset is added to all face ids, which can be useful for mixing tracking data from multiple network sources", default=0)
 parser.add_argument("--repeat-video", type=int, help="When set to 1 and a video file was specified with -c, the tracker will loop the video until interrupted", default=0)
 parser.add_argument("--dump-points", type=str, help="When set to a filename, the current face 3D points are made symmetric and dumped to the given file when quitting the visualization with the \"q\" key", default="")
@@ -345,6 +346,7 @@ if args.benchmark > 0:
         for i in range(100):
             start = time.perf_counter()
             r, rmat = tracker.predict(im)
+            # r = tracker.predict(im)
             total += time.perf_counter() - start
         print(1. / (total / 100.))
     sys.exit(0)
@@ -412,13 +414,14 @@ if args.log_data != "":
 is_camera = args.capture == str(try_int(args.capture))
 
 ###
-if args.ensamble == 1:
-    gaze_estimator = GazeEstimator("/cpu:0", ['C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_0_02.h5',
-                                            'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_1_02.h5',
-                                            'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_2_02.h5',
-                                            'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_3_02.h5'])
-else:
-    gaze_estimator = GazeEstimator("/cpu:0", 'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\Model_allsubjects1.h5')
+if args.eye_gaze == 1:
+    if args.ensamble == 1:
+        gaze_estimator = GazeEstimator("/cpu:0", ['C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_0_02.h5',
+                                                'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_1_02.h5',
+                                                'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_2_02.h5',
+                                                'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_3_02.h5'])
+    else:
+        gaze_estimator = GazeEstimator("/cpu:0", 'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\Model_allsubjects1.h5')
 ###
 
 try:
@@ -485,6 +488,7 @@ try:
         try:
             inference_start = time.perf_counter()
             faces, rmat = tracker.predict(frame)
+            # faces = tracker.predict(frame)
             if len(faces) > 0:
                 inference_time = (time.perf_counter() - inference_start)
                 total_tracking_time += inference_time
@@ -661,31 +665,31 @@ try:
                     COUNTER_ORIGIN = 0
 
                 ######
+                if args.eye_gaze == 1:
+                    _rotation_matrix = np.matmul(rmat, np.array([[0, 1, 0], [0, 0, -1], [-1, 0, 0]]))
+                    _m = np.zeros((4, 4))
+                    _rotation_matrix = np.matmul(_rotation_matrix, np.array([[0, 1, 0], [0, 0, -1], [-1, 0, 0]]))
+                    _m[:3, :3] = _rotation_matrix
+                    _m[3, 3] = 1
+                    # Go from camera space to ROS space
+                    _camera_to_ros = [[0.0, 0.0, 1.0, 0.0],
+                                    [-1.0, 0.0, 0.0, 0.0],
+                                    [0.0, -1.0, 0.0, 0.0],
+                                    [0.0, 0.0, 0.0, 1.0]]
 
-                _rotation_matrix = np.matmul(rmat, np.array([[0, 1, 0], [0, 0, -1], [-1, 0, 0]]))
-                _m = np.zeros((4, 4))
-                _rotation_matrix = np.matmul(_rotation_matrix, np.array([[0, 1, 0], [0, 0, -1], [-1, 0, 0]]))
-                _m[:3, :3] = _rotation_matrix
-                _m[3, 3] = 1
-                # Go from camera space to ROS space
-                _camera_to_ros = [[0.0, 0.0, 1.0, 0.0],
-                                [-1.0, 0.0, 0.0, 0.0],
-                                [0.0, -1.0, 0.0, 0.0],
-                                [0.0, 0.0, 0.0, 1.0]]
+                    roll_pitch_yaw = list(euler_from_matrix(np.dot(_camera_to_ros, _m)))
+                    roll_pitch_yaw = limit_yaw(roll_pitch_yaw)
 
-                roll_pitch_yaw = list(euler_from_matrix(np.dot(_camera_to_ros, _m)))
-                roll_pitch_yaw = limit_yaw(roll_pitch_yaw)
-
-                phi_head, theta_head = get_phi_theta_from_euler(roll_pitch_yaw)
+                    phi_head, theta_head = get_phi_theta_from_euler(roll_pitch_yaw)
 
 
-                # le_c, re_c, _, _ = get_eye_image_from_landmarks(f.bbox, get_image_from_bb(frame, f.bbox), f.lms, (60,36))
-                re_c = get_eye_area(eye_gaze_frame, [f.lms[36], f.lms[37], f.lms[38], f.lms[39], f.lms[40], f.lms[41]])
-                le_c = get_eye_area(eye_gaze_frame, [f.lms[42], f.lms[43], f.lms[44], f.lms[45], f.lms[46], f.lms[47]])
+                    # le_c, re_c, _, _ = get_eye_image_from_landmarks(f.bbox, get_image_from_bb(frame, f.bbox), f.lms, (60,36))
+                    re_c = get_eye_area(eye_gaze_frame, [f.lms[36], f.lms[37], f.lms[38], f.lms[39], f.lms[40], f.lms[41]])
+                    le_c = get_eye_area(eye_gaze_frame, [f.lms[42], f.lms[43], f.lms[44], f.lms[45], f.lms[46], f.lms[47]])
 
-                r_eye_roi_resize.append(input_from_image(re_c))
-                l_eye_roi_resize.append(input_from_image(le_c))
-                head_list.append([phi_head, theta_head])
+                    r_eye_roi_resize.append(input_from_image(re_c))
+                    l_eye_roi_resize.append(input_from_image(le_c))
+                    head_list.append([phi_head, theta_head])
 
                 #########
                 frame_count += 1
@@ -697,7 +701,7 @@ try:
                     frame = cv2.putText(frame, str(f.id), (int(f.bbox[0]), int(f.bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,0))
                     frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,255,0), 1, cv2.LINE_AA)
 
-                    frame = cv2.putText(frame, 'blink: ' + str(blink_count) + ' - ' + str(blink_count_origin), (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, 'blink: (model)' + str(blink_count) + ' - (ear)' + str(blink_count_origin), (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,0,255), 1)
                     frame = cv2.putText(frame, 'mouth: ', (10,120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
                     frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(pitch, 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
@@ -779,17 +783,18 @@ try:
                     log.flush()
 
             ##########eye gaze
-            gaze_est = gaze_estimator.estimate_gaze_twoeyes(inference_input_left_list=l_eye_roi_resize,
-                                                    inference_input_right_list=r_eye_roi_resize,
-                                                    inference_headpose_list=head_list)
-            
-            for gaze, headpose in zip(gaze_est.tolist(), head_list):
-                # Build visualizations
-                r_gaze_img = gaze_estimator.visualize_eye_result(re_c, gaze)
-                l_gaze_img = gaze_estimator.visualize_eye_result(le_c, gaze)
-                s_gaze_img = np.concatenate((cv2.resize(r_gaze_img, (112,112)), cv2.resize(l_gaze_img, (112,112))), axis=1)
+            if args.eye_gaze == 1:
+                gaze_est = gaze_estimator.estimate_gaze_twoeyes(inference_input_left_list=l_eye_roi_resize,
+                                                        inference_input_right_list=r_eye_roi_resize,
+                                                        inference_headpose_list=head_list)
                 
-                cv2.imshow('eye_gaze', s_gaze_img)
+                for gaze, headpose in zip(gaze_est.tolist(), head_list):
+                    # Build visualizations
+                    r_gaze_img = gaze_estimator.visualize_eye_result(re_c, gaze)
+                    l_gaze_img = gaze_estimator.visualize_eye_result(le_c, gaze)
+                    s_gaze_img = np.concatenate((cv2.resize(r_gaze_img, (112,112)), cv2.resize(l_gaze_img, (112,112))), axis=1)
+                    
+                    cv2.imshow('eye_gaze', s_gaze_img)
     
             #########3
             if detected and len(faces) < 40:
