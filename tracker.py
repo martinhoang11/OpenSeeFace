@@ -573,6 +573,9 @@ class Tracker():
         self.mean_224 = np.tile(self.mean, [224, 224, 1])
         self.std_224 = np.tile(self.std, [224, 224, 1])
 
+        self.mean_640_480 = np.tile(self.mean, [640, 640, 1])
+        self.std_640_480 = np.tile(self.std, [640, 640, 1])
+
         # PnP solving
         self.face_3d = np.array([
             [ 0.4551769692672  ,  0.300895790030204, -0.764429433974752],

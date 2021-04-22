@@ -14,6 +14,7 @@ from rt_gene.tracker_generic import GenericTracker
 import matplotlib.pyplot as plt
 from rt_gene.gaze_tools import get_phi_theta_from_euler, limit_yaw
 from rt_gene.gaze_tools_standalone import euler_from_matrix
+from imutils import paths
 
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -33,7 +34,7 @@ else:
 parser.add_argument("-c", "--capture", help="Set camera ID (0, 1...) or video file", default="0")
 parser.add_argument("-m", "--max-threads", type=int, help="Set the maximum number of threads", default=1)
 parser.add_argument("-t", "--threshold", type=float, help="Set minimum confidence threshold for face tracking", default=None)
-parser.add_argument("-d", "--detection-threshold", type=float, help="Set minimum confidence threshold for face detection", default=0.6)
+parser.add_argument("-d", "--detection-threshold", type=float, help="Set minimum confidence threshold for face detection", default=0.02)
 parser.add_argument("-v", "--visualize", type=int, help="Set this to 1 to visualize the tracking, to 2 to also show face ids, to 3 to add confidence values or to 4 to add numbers to the point display", default=0)
 parser.add_argument("-P", "--pnp-points", type=int, help="Set this to 1 to add the 3D fitting points to the visualization", default=0)
 parser.add_argument("-s", "--silent", type=int, help="Set this to 1 to prevent text output on the console", default=0)
@@ -333,6 +334,7 @@ import struct
 import json
 from input_reader import InputReader, VideoReader, DShowCaptureReader, try_int
 from tracker import Tracker, get_model_base_path
+from tqdm import tqdm
 
 if args.benchmark > 0:
     model_base_path = get_model_base_path(args.model_dir)
@@ -503,6 +505,7 @@ try:
             l_eye_roi_resize = []
             head_list = []
 
+
             for face_num, f in enumerate(faces):
                 f = copy.copy(f)
                 f.id += args.face_id_offset
@@ -622,7 +625,7 @@ try:
                 # visualize_eye_result(frame, (f.lms[66][1]*100, f.lms[66][0]*100), tdx=f.lms[66][1], tdy=f.lms[66][0], center_x=pupil_r_x, center_y=pupil_r_y)
                 # visualize_eye_result(frame, (f.lms[67][1]*100, f.lms[67][0]*100), tdx=f.lms[67][1], tdy=f.lms[67][0], center_x=pupil_l_x, center_y=pupil_l_y)
                 #### head pose visualize
-               
+            
                 draw_axis(frame, -f.euler[1]+17, f.euler[0]+10, f.euler[2]+3, tdx=f.lms[30][1], tdy=f.lms[30][0], size = 100)
                 #### save ear to csv
                 # if len(eye_blink_temp) == 13:
@@ -715,6 +718,8 @@ try:
 
                 if args.visualize > 2:
                     frame = cv2.putText(frame, f"{f.conf:.4f}", (int(f.bbox[0] + 18), int(f.bbox[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
+                
+                # cv2.imwrite('frame.jpg', frame)
                 for pt_num, (x,y,c) in enumerate(f.lms):
                     packet.extend(bytearray(struct.pack("f", y)))
                     packet.extend(bytearray(struct.pack("f", x)))
