@@ -19,6 +19,8 @@ class VideoReader():
             print("The video source cannot be opened")
             sys.exit(0)
         self.name = str(capture)
+    def get_frame(self):
+        return self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
     def is_open(self):
         return self.cap.isOpened()
     def is_ready(self):
@@ -248,3 +250,7 @@ class InputReader():
         return self.reader.read()
     def close(self):
         self.reader.close()
+    def get_fps(self):
+        return self.reader.get_fps()
+    def get_frame(self):
+        return self.reader.get_frame()
