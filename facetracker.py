@@ -478,7 +478,6 @@ try:
         need_reinit = 0
         # frame_count += 1
         now = time.time()
-
         if first:
             first = False
             height, width, channels = frame.shape
@@ -504,7 +503,6 @@ try:
             r_eye_roi_resize = []
             l_eye_roi_resize = []
             head_list = []
-
 
             for face_num, f in enumerate(faces):
                 f = copy.copy(f)

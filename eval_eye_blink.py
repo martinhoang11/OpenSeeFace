@@ -4,6 +4,7 @@ import sys
 import argparse
 import traceback
 import gc
+import numpy as np
 import math
 from math import cos, sin
 from scipy.spatial import distance as dist
@@ -15,6 +16,9 @@ import matplotlib.pyplot as plt
 from rt_gene.gaze_tools import get_phi_theta_from_euler, limit_yaw
 from rt_gene.gaze_tools_standalone import euler_from_matrix
 from imutils import paths
+import time
+import h5py
+from sklearn.metrics import confusion_matrix,accuracy_score, classification_report, roc_auc_score
 
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -260,17 +264,6 @@ def process_video():
 
     is_camera = args.capture == str(try_int(args.capture))
 
-    ###
-    if args.eye_gaze == 1:
-        if args.ensamble == 1:
-            gaze_estimator = GazeEstimator("/cpu:0", ['C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_0_02.h5',
-                                                    'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_1_02.h5',
-                                                    'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_2_02.h5',
-                                                    'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_3_02.h5'])
-        else:
-            gaze_estimator = GazeEstimator("/cpu:0", 'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\Model_allsubjects1.h5')
-    ###
-
     try:
         attempt = 0
         frame_time = time.perf_counter()
@@ -283,6 +276,7 @@ def process_video():
         source_name = input_reader.name
         blink_count = 0
         blink_count_origin = 0
+    
         while repeat or input_reader.is_open():
             if not input_reader.is_open() or need_reinit == 1:
                 input_reader = InputReader(args.capture, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag, dcap=dcap)
@@ -307,7 +301,7 @@ def process_video():
                 'frame_count': frame_count,
                 'duration(s)': duration
             }
-            print(fps)
+
             # frame = cv2.flip(frame,1)
             #2 -50 - 0.5 -20,-50
             # frame = cv2.convertScaleAbs(frame, -1, 0.5, -20)
@@ -529,55 +523,6 @@ def process_video():
                     if args.video_scale != 1:
                         del video_frame
 
-                if args.visualize != 0:
-                    cv2.imshow('OpenSeeFace Visualization', frame)
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        if args.dump_points != "" and not faces is None and len(faces) > 0:
-                            np.set_printoptions(threshold=sys.maxsize, precision=15)
-                            pairs = [
-                                (0, 16),
-                                (1, 15),
-                                (2, 14),
-                                (3, 13),
-                                (4, 12),
-                                (5, 11),
-                                (6, 10),
-                                (7, 9),
-                                (17, 26),
-                                (18, 25),
-                                (19, 24),
-                                (20, 23),
-                                (21, 22),
-                                (31, 35),
-                                (32, 34),
-                                (36, 45),
-                                (37, 44),
-                                (38, 43),
-                                (39, 42),
-                                (40, 47),
-                                (41, 46),
-                                (48, 52),
-                                (49, 51),
-                                (56, 54),
-                                (57, 53),
-                                (58, 62),
-                                (59, 61),
-                                (65, 63)
-                            ]
-                            points = copy.copy(faces[0].face_3d)
-                            for a, b in pairs:
-                                x = (points[a, 0] - points[b, 0]) / 2.0
-                                y = (points[a, 1] + points[b, 1]) / 2.0
-                                z = (points[a, 2] + points[b, 2]) / 2.0
-                                points[a, 0] = x
-                                points[b, 0] = -x
-                                points[[a, b], 1] = y
-                                points[[a, b], 2] = z
-                            points[[8, 27, 28, 29, 33, 50, 55, 60, 64], 0] = 0.0
-                            points[30, :] = 0.0
-                            with open(args.dump_points, "w") as fh:
-                                fh.write(repr(points))
-                        break
                 failures = 0
             except Exception as e:
                 if e.__class__ == KeyboardInterrupt:
@@ -623,11 +568,6 @@ def process_video():
     output_str = 'Processing {} has done.\n\n'.format(file_name)
     return frame_info_df, output_closeness, output_blinks, processed_frame, video_info_dict, output_str
 
-SKIP_FIRST_FRAMES = 0
-frame_info_df, closeness_predictions, blink_predictions, frames, video_info, scores_string \
-    = process_video()
-
-# recalculate the data from processing video by skipping first n frames
 def skip_first_n_frames(frame_info_df, closeness_list, blink_list, processed_frames, skip_n=0, consec_th=3):
     # recalculate closeness_list
     recalculated_closeness_list = closeness_list[skip_n:] # skip first n frames
@@ -670,10 +610,6 @@ def skip_first_n_frames(frame_info_df, closeness_list, blink_list, processed_fra
     
     return frame_info_df, recalculated_closeness_list, recalculated_blink_list, recalculated_processed_frames
 
-frame_info_df, closeness_predictions_skipped, blink_predictions_skipped, frames_skipped \
-    = skip_first_n_frames(frame_info_df, closeness_predictions, blink_predictions, frames, \
-                          skip_n = SKIP_FIRST_FRAMES)
-
 def display_stats(closeness_list, blinks_list, video_info = None, skip_n = 0, test = False):
     str_out = ""
     # write video info
@@ -704,11 +640,212 @@ def display_stats(closeness_list, blinks_list, video_info = None, skip_n = 0, te
     print(str_out)
     return str_out
 
-# first display statistics by using original outputs
-scores_string += display_stats(closeness_predictions, blink_predictions, video_info)
+def read_annotations(input_file, skip_n = 0):
+    # define variables 
+    blink_start = 1
+    blink_end = 1
+    blink_info = (0,0)
+    blink_list = []
+    closeness_list = []
 
-# then display statistics by using outputs of skip_first_n_frames() function which are 
-#"closeness_predictions_skipped" and "blinks_predictions_skipped"
-if(SKIP_FIRST_FRAMES > 0):
-    scores_string += display_stats(closeness_predictions_skipped, blink_predictions_skipped, video_info, \
-                             skip_n = SKIP_FIRST_FRAMES)
+    # Using readlines() 
+    file1 = open(input_file) 
+    Lines = file1.readlines() 
+
+    # find "#start" line 
+    start_line = 1
+    for line in Lines: 
+        clean_line=line.strip()
+        if clean_line=="#start":
+            break
+        start_line += 1
+
+    # convert tag file to readable format and build "closeness_list" and "blink_list"
+    for index in range(len(Lines[start_line+skip_n : -1])): # -1 since last line will be"#end"
+        
+        # read previous annotation and current annotation 
+        prev_annotation=Lines[start_line+skip_n+index-1].split(':')
+        current_annotation=Lines[start_line+skip_n+index].split(':')
+        
+        # if previous annotation is not "#start" line and not "blink" and current annotation is a "blink"
+        if prev_annotation[0] != "#start\n" and prev_annotation[1] == "-1" and int(current_annotation[1]) > 0:
+            # it means a new blink starts so save frame id as starting frame of the blink
+            blink_start = int(current_annotation[0])
+        
+        # if previous annotation is not "#start" line and is a "blink" and current annotation is not a "blink"
+        if prev_annotation[0] != "#start\n" and int(prev_annotation[1]) > 0 and current_annotation[1] == "-1":
+            # it means a new blink ends so save (frame id - 1) as ending frame of the blink
+            blink_end = int(current_annotation[0]) - 1
+            # and construct a "blink_info" tuple to append the "blink_list"
+            blink_info = (blink_start,blink_end)
+            blink_list.append(blink_info)
+        
+        # if current annotation consist fully closed eyes, append it also to "closeness_list" 
+        if current_annotation[3] == "C" and current_annotation[5] == "C":
+            closeness_list.append(1)
+        
+        else:
+            closeness_list.append(0)
+    
+    file1.close()
+    return closeness_list, blink_list
+
+def display_test_scores(closeness_list_test, closeness_list_pred):
+    str_out = ""
+    str_out += ("EYE CLOSENESS FRAME BY FRAME TEST SCORES\n")
+    str_out += ("\n")
+
+    #print accuracy
+    accuracy = accuracy_score(closeness_list_test, closeness_list_pred)
+    str_out += ("ACCURACY: {:.4f}\n".format(accuracy))
+    str_out += ("\n")
+
+    #print AUC score
+    auc = roc_auc_score(closeness_list_test, closeness_list_pred)
+    str_out += ("AUC: {:.4f}\n".format(auc))
+    str_out += ("\n")
+
+    #print confusion matrix
+    str_out += ("CONFUSION MATRIX:\n")
+    conf_mat = confusion_matrix(closeness_list_test, closeness_list_pred)
+    str_out += ("{}".format(conf_mat))
+    str_out += ("\n")
+    str_out += ("\n")
+
+    #print FP, FN
+    str_out += ("FALSE POSITIVES:\n")
+    fp = conf_mat[1][0]
+    pos_labels = conf_mat[1][0]+conf_mat[1][1]
+    str_out += ("{} out of {} positive labels ({:.4f}%)\n".format(fp, pos_labels,fp/pos_labels))
+    str_out += ("\n")
+
+    str_out += ("FALSE NEGATIVES:\n")
+    fn = conf_mat[0][1]
+    neg_labels = conf_mat[0][1]+conf_mat[0][0]
+    str_out += ("{} out of {} negative labels ({:.4f}%)\n".format(fn, neg_labels, fn/neg_labels))
+    str_out += ("\n")
+
+    #print classification report
+    str_out += ("PRECISION, RECALL, F1 scores:\n")
+    str_out += ("{}".format(classification_report(closeness_list_test, closeness_list_pred)))
+    
+    print(str_out)
+    return str_out
+
+def write_outputs(input_file_name, closeness_list, blinks_list, frame_info_df=None, scores=None, \
+                  test=False, scores_only=False):
+    # clean filename from path and extensions so you can pass input_file variable to function as it is.
+    clean_filename=os.path.basename(os.path.splitext(input_file_name)[0])
+    
+    # if you are writing prediction outputs
+    if test == False and scores_only == False:
+        #write all lists to single .h5 file
+        with h5py.File("{}_pred.h5".format(clean_filename), "w") as hf:
+            g = hf.create_group('pred')
+            g.create_dataset('closeness_list',data=closeness_list)
+            g.create_dataset('blinks_list',data=blinks_list)
+            if frame_info_df is not None:
+                frame_info_df.to_parquet('{}_frame_info_df.parquet'.format(clean_filename), engine='pyarrow')
+            
+    # if you are writing test outputs
+    if test == True and scores_only == False:
+        #write all lists to single .h5 file
+        with h5py.File("{}_test.h5".format(clean_filename), "w") as hf:
+            g = hf.create_group('test')
+            g.create_dataset('closeness_list',data=closeness_list)
+            g.create_dataset('blinks_list',data=blinks_list)
+            if frame_info_df is not None:
+                frame_info_df.to_parquet('{}_frame_info_df.parquet'.format(clean_filename), engine='pyarrow')
+
+   # if you are writing scores
+    if scores != None:
+        # use text files this time
+        with open("{}_scores.txt".format(clean_filename),"w", encoding='utf-8') as f:
+            f.write(scores)
+    return
+
+def read_outputs(h5_name, parquet_name=None, test=False):
+    # read h5 file by name
+    hf = h5py.File('{}.h5'.format(h5_name), 'r')
+    
+    # if you are reading prediction results
+    if test == False:  
+        g = hf.get("pred") # read group first   
+        
+    # if you are reading test results
+    if test == True:
+         g = hf.get("test") # read group first  
+            
+    # then get datasets
+    closeness_list = list(g.get('closeness_list'))
+    blink_list = list(g.get('blinks_list'))
+
+    # if you want to read frame_df_info
+    if parquet_name != None:
+        frame_info_df = pd.read_parquet('{}.parquet'.format(parquet_name), engine='pyarrow')
+        return closeness_list, blink_list, frame_info_df
+    
+    # if you don't want to read frame_df_info
+    else:
+        return closeness_list, blink_list
+
+def load_datasets(path, dataset_name):
+    # build  full path
+    full_path = os.path.join(path, dataset_name)
+    
+    # read prediction results and frame_info_df
+    closeness_pred, blinks_pred, frame_info_df \
+                = read_outputs("{}_pred".format(full_path),"{}_frame_info_df".format(full_path))
+
+    # read test results
+    closeness_test, blinks_test = read_outputs("{}_test".format(full_path), test = True)
+    
+    # read scores
+    with open("{}_scores.txt".format(full_path),"r") as f:
+        Lines = f.readlines() 
+        # build a string that hold scores
+        scores_str = ""
+        for line in Lines: 
+            scores_str += line
+
+    return  closeness_pred, blinks_pred, frame_info_df, closeness_test, blinks_test, scores_str
+
+if __name__ == '__main__':
+    SKIP_FIRST_FRAMES = 0
+    frame_info_df, closeness_predictions, blink_predictions, frames, video_info, scores_string \
+        = process_video()
+    
+    frame_info_df, closeness_predictions_skipped, blink_predictions_skipped, frames_skipped \
+        = skip_first_n_frames(frame_info_df, closeness_predictions, blink_predictions, frames, \
+            skip_n = SKIP_FIRST_FRAMES)
+
+    scores_string += display_stats(closeness_predictions, blink_predictions, video_info)
+
+    # then display statistics by using outputs of skip_first_n_frames() function which are 
+    #"closeness_predictions_skipped" and "blinks_predictions_skipped"
+    if(SKIP_FIRST_FRAMES > 0):
+        scores_string += display_stats(closeness_predictions_skipped, blink_predictions_skipped, video_info, \
+                                skip_n = SKIP_FIRST_FRAMES)
+    
+    file_path = "C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\eye_blink\\talkingFace\\talking.tag"
+
+    # read tag file
+    closeness_test, blinks_test = read_annotations(file_path, skip_n = SKIP_FIRST_FRAMES)
+
+    scores_string += display_stats(closeness_test, blinks_test, skip_n = SKIP_FIRST_FRAMES, test = True)
+    scores_string += display_test_scores(closeness_test, closeness_predictions)
+    write_outputs(file_path, closeness_predictions_skipped, blink_predictions_skipped, \
+              frame_info_df, scores_string)
+
+    # write test output files by using outputs of skip_first_n_frames() function
+    # no need to write frame_info_df and scores_string since they already have written above
+    write_outputs(file_path, closeness_test, blinks_test, test = True)
+    c_pred, b_pred, df, c_test, b_test, s_str= load_datasets("C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\eye_blink", "test")
+
+    # check results
+    print(np.array(c_pred).shape, np.array(b_pred).shape)
+    print(np.array(c_test).shape, np.array(b_test).shape)
+    print()
+    print(s_str)
+
+    
