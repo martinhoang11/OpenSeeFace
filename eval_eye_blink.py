@@ -44,7 +44,7 @@ parser.add_argument("-P", "--pnp-points", type=int, help="Set this to 1 to add t
 parser.add_argument("-s", "--silent", type=int, help="Set this to 1 to prevent text output on the console", default=0)
 parser.add_argument("--faces", type=int, help="Set the maximum number of faces (slow)", default=1)
 parser.add_argument("--scan-retinaface", type=int, help="When set to 1, scanning for additional faces will be performed using RetinaFace in a background thread, otherwise a simpler, faster face detection mechanism is used. When the maximum number of faces is 1, this option does nothing.", default=0)
-parser.add_argument("--scan-every", type=int, help="Set after how many frames a scan for new faces should run", default=3)
+parser.add_argument("--scan-every", type=int, help="Set after how many frames a scan for new faces should run", default=1)
 parser.add_argument("--discard-after", type=int, help="Set the how long the tracker should keep looking for lost faces", default=10)
 parser.add_argument("--max-feature-updates", type=int, help="This is the number of seconds after which feature min/max/medium values will no longer be updated once a face has been detected.", default=900)
 parser.add_argument("--no-3d-adapt", type=int, help="When set to 1, the 3D face model will not be adapted to increase the fit", default=1)
@@ -105,7 +105,7 @@ def eye_aspect_ratio(eye):
     ear = (A + B) / (2.0 * C)
     return ear
 
-def process_video():
+def process_video(video_path):
     output_logfile = None
     if args.log_output != "":
         output_logfile = open(args.log_output, "w")
@@ -181,7 +181,7 @@ def process_video():
             total = 0.0
             for i in range(100):
                 start = time.perf_counter()
-                r, rmat = tracker.predict(im)
+                r = tracker.predict(im)
                 # r = tracker.predict(im)
                 total += time.perf_counter() - start
             print(1. / (total / 100.))
@@ -200,11 +200,11 @@ def process_video():
         fps = args.fps
         dcap = args.dcap
         use_dshowcapture_flag = True if args.use_dshowcapture == 1 else False
-        input_reader = InputReader(args.capture, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag, dcap=dcap)
+        input_reader = InputReader(video_path, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag, dcap=dcap)
         if args.dcap == -1 and type(input_reader) == DShowCaptureReader:
             fps = min(fps, input_reader.device.get_fps())
     else:
-        input_reader = InputReader(args.capture, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag)
+        input_reader = InputReader(video_path, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag)
 
     # if type(input_reader.reader) == VideoReader:
     #     fps = 0.0
@@ -239,7 +239,7 @@ def process_video():
     lEnd = 48
     rStart = 36
     rEnd = 42
-    ear_th = 0.21
+    ear_th = 0.18
     consec_th = 3
     up_to = None
 
@@ -262,7 +262,7 @@ def process_video():
         log.write("\r\n")
         log.flush()
 
-    is_camera = args.capture == str(try_int(args.capture))
+    is_camera = video_path == str(try_int(video_path))
 
     try:
         attempt = 0
@@ -279,7 +279,7 @@ def process_video():
     
         while repeat or input_reader.is_open():
             if not input_reader.is_open() or need_reinit == 1:
-                input_reader = InputReader(args.capture, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag, dcap=dcap)
+                input_reader = InputReader(video_path, args.raw_rgb, args.width, args.height, fps, use_dshowcapture=use_dshowcapture_flag, dcap=dcap)
                 if input_reader.name != source_name:
                     print(f"Failed to reinitialize camera and got {input_reader.name} instead of {source_name}.")
                     sys.exit(1)
@@ -291,7 +291,6 @@ def process_video():
                 continue
             
             ret, frame = input_reader.read()
-            eye_gaze_frame = copy.deepcopy(frame)
 
             fps = input_reader.get_fps()
             frame_count = int(input_reader.get_frame())
@@ -338,7 +337,7 @@ def process_video():
 
             try:
                 inference_start = time.perf_counter()
-                faces, rmat = tracker.predict(frame)
+                faces = tracker.predict(frame)
                 # faces = tracker.predict(frame)
                 if len(faces) > 0:
                     inference_time = (time.perf_counter() - inference_start)
@@ -391,12 +390,14 @@ def process_video():
                     packet.extend(bytearray(struct.pack("f", f.translation[1])))
                     packet.extend(bytearray(struct.pack("f", f.translation[2])))
 
-                    r_eye = [swap_xy(f.lms[36]), swap_xy(f.lms[37]), swap_xy(f.lms[38]), swap_xy(f.lms[39]), swap_xy(f.lms[40]), swap_xy(f.lms[41])]
-                    l_eye = [swap_xy(f.lms[42]), swap_xy(f.lms[43]), swap_xy(f.lms[44]), swap_xy(f.lms[45]), swap_xy(f.lms[46]), swap_xy(f.lms[47])]
-                    ear = np.average((eye_aspect_ratio(r_eye), eye_aspect_ratio(l_eye)))
+                    r_eye = [[f.lms[36][1], f.lms[36][0]], [f.lms[37][1], f.lms[37][0]], [f.lms[38][1], f.lms[38][0]], [f.lms[39][1], f.lms[39][0]], [f.lms[40][1], f.lms[40][0]], [f.lms[41][1], f.lms[41][0]]]
+                    l_eye = [[f.lms[42][1], f.lms[42][0]], [f.lms[43][1], f.lms[43][0]], [f.lms[44][1], f.lms[44][0]], [f.lms[45][1], f.lms[45][0]], [f.lms[46][1], f.lms[46][0]], [f.lms[47][1], f.lms[47][0]]]
+                    l_eye_ratio = eye_aspect_ratio(l_eye)
+                    r_eye_ratio = eye_aspect_ratio(r_eye)
+                    ear = (l_eye_ratio + r_eye_ratio) / 2.0
+                    ear_model = (f.eye_blink[0] + f.eye_blink[1]) / 2.0
 
-
-                    if ear < ear_th:
+                    if ear_model < 0.7: #0.21
                         COUNTER += 1
                         closeness = 1
                         output_closeness.append(closeness)
@@ -417,9 +418,10 @@ def process_video():
                         'face_coordinates': 0,
                         'left_eye_coor': 0,
                         'right_eye_coor': 0,
-                        'left_ear': eye_aspect_ratio(l_eye),
-                        'right_ear': eye_aspect_ratio(r_eye),
+                        'left_ear': l_eye_ratio,
+                        'right_ear': r_eye_ratio,
                         'avg_ear': ear,
+                        'avg_ear_model': ear_model,
                         'closeness': closeness,
                         'blink_no': TOTAL,
                         'blink_start_frame': blink_start,
@@ -427,10 +429,9 @@ def process_video():
                         'reserved_for_calibration': False
                     }
                     frame_info_list.append(frame_info)
-
                     processed_frame.append(frame)
                     current_frame += 1
-                    frame_info_df = pd.DataFrame(frame_info_list)
+                    # frame_info_df = pd.DataFrame(frame_info_list) # debug
                     
                     framecount += 1
                     if not log is None:
@@ -511,6 +512,7 @@ def process_video():
                     if not log is None:
                         log.write("\r\n")
                         log.flush()
+                
 
                 if detected and len(faces) < 40:
                     sock.sendto(packet, (target_ip, target_port))
@@ -563,8 +565,11 @@ def process_video():
         average_tracking_time = 1000 * tracking_time / tracking_frames
         print(f"Average tracking time per detected face: {average_tracking_time:.2f} ms")
         print(f"Tracking time: {total_tracking_time:.3f} s\nFrames: {tracking_frames}")
-    
-    file_name = os.path.basename(args.capture)
+
+    frame_info_df = pd.DataFrame(frame_info_list)
+    frame_info_df['output_closeness'] = output_closeness
+
+    file_name = os.path.basename(video_path)
     output_str = 'Processing {} has done.\n\n'.format(file_name)
     return frame_info_df, output_closeness, output_blinks, processed_frame, video_info_dict, output_str
 
@@ -740,22 +745,22 @@ def write_outputs(input_file_name, closeness_list, blinks_list, frame_info_df=No
     # if you are writing prediction outputs
     if test == False and scores_only == False:
         #write all lists to single .h5 file
-        with h5py.File("{}_pred.h5".format(clean_filename), "w") as hf:
+        with h5py.File("data_training\\{}_pred.h5".format(clean_filename), "w") as hf:
             g = hf.create_group('pred')
             g.create_dataset('closeness_list',data=closeness_list)
             g.create_dataset('blinks_list',data=blinks_list)
             if frame_info_df is not None:
-                frame_info_df.to_parquet('{}_frame_info_df.parquet'.format(clean_filename), engine='pyarrow')
+                frame_info_df.to_parquet('data_training\\{}_frame_info_df.parquet'.format(clean_filename), engine='pyarrow')
             
     # if you are writing test outputs
     if test == True and scores_only == False:
         #write all lists to single .h5 file
-        with h5py.File("{}_test.h5".format(clean_filename), "w") as hf:
+        with h5py.File("data_training\\{}_test.h5".format(clean_filename), "w") as hf:
             g = hf.create_group('test')
             g.create_dataset('closeness_list',data=closeness_list)
             g.create_dataset('blinks_list',data=blinks_list)
             if frame_info_df is not None:
-                frame_info_df.to_parquet('{}_frame_info_df.parquet'.format(clean_filename), engine='pyarrow')
+                frame_info_df.to_parquet('data_training\\{}_frame_info_df.parquet'.format(clean_filename), engine='pyarrow')
 
    # if you are writing scores
     if scores != None:
@@ -789,7 +794,7 @@ def read_outputs(h5_name, parquet_name=None, test=False):
     else:
         return closeness_list, blink_list
 
-def load_datasets(path, dataset_name):
+def load_datasets(path, dataset_name):              
     # build  full path
     full_path = os.path.join(path, dataset_name)
     
@@ -811,41 +816,57 @@ def load_datasets(path, dataset_name):
     return  closeness_pred, blinks_pred, frame_info_df, closeness_test, blinks_test, scores_str
 
 if __name__ == '__main__':
+    # from imutils import paths
+    # avi_video_files = []
+    # tag_video_files = []
+    # for i in list(paths.list_files('.\\eye_blink'))[1:]:
+    #     if i.endswith('.avi'):
+    #         avi_video_files.append(i)
+    #     elif i.endswith('.tag'):
+    #         tag_video_files.append(i)
     SKIP_FIRST_FRAMES = 0
+    # for avi_video in avi_video_files:
+    #     print(f'Processing {avi_video}')
+    file_path = "C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\eye_blink\\eyeblink8\\4\\26122013_230654_cam.tag"
+    # file_path = "C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\eye_blink\\talkingFace\\talking.tag"
+    avi_video = "C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\eye_blink\\eyeblink8\\4\\26122013_230654_cam.avi"
+    # avi_video = "C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\eye_blink\\talkingFace\\talking.avi"
     frame_info_df, closeness_predictions, blink_predictions, frames, video_info, scores_string \
-        = process_video()
-    
+        = process_video(avi_video)
+
     frame_info_df, closeness_predictions_skipped, blink_predictions_skipped, frames_skipped \
         = skip_first_n_frames(frame_info_df, closeness_predictions, blink_predictions, frames, \
             skip_n = SKIP_FIRST_FRAMES)
 
+    frame_info_df.to_csv(f'{os.path.join("data_training", os.path.basename(avi_video))}.csv')
+     
+
     scores_string += display_stats(closeness_predictions, blink_predictions, video_info)
 
-    # then display statistics by using outputs of skip_first_n_frames() function which are 
-    #"closeness_predictions_skipped" and "blinks_predictions_skipped"
-    if(SKIP_FIRST_FRAMES > 0):
-        scores_string += display_stats(closeness_predictions_skipped, blink_predictions_skipped, video_info, \
-                                skip_n = SKIP_FIRST_FRAMES)
+    # # then display statistics by using outputs of skip_first_n_frames() function which are 
+    # #"closeness_predictions_skipped" and "blinks_predictions_skipped"
+    # if(SKIP_FIRST_FRAMES > 0):
+    #     scores_string += display_stats(closeness_predictions_skipped, blink_predictions_skipped, video_info, \
+    #                             skip_n = SKIP_FIRST_FRAMES)
     
-    file_path = "C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\eye_blink\\talkingFace\\talking.tag"
 
     # read tag file
     closeness_test, blinks_test = read_annotations(file_path, skip_n = SKIP_FIRST_FRAMES)
 
     scores_string += display_stats(closeness_test, blinks_test, skip_n = SKIP_FIRST_FRAMES, test = True)
     scores_string += display_test_scores(closeness_test, closeness_predictions)
-    write_outputs(file_path, closeness_predictions_skipped, blink_predictions_skipped, \
-              frame_info_df, scores_string)
+    # write_outputs(file_path, closeness_predictions_skipped, blink_predictions_skipped, \
+    #           frame_info_df, scores_string)
 
-    # write test output files by using outputs of skip_first_n_frames() function
-    # no need to write frame_info_df and scores_string since they already have written above
-    write_outputs(file_path, closeness_test, blinks_test, test = True)
-    c_pred, b_pred, df, c_test, b_test, s_str= load_datasets("C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\eye_blink", "test")
+    # # write test output files by using outputs of skip_first_n_frames() function
+    # # no need to write frame_info_df and scores_string since they already have written above
+    # write_outputs(file_path, closeness_test, blinks_test, test = True)
+    # c_pred, b_pred, df, c_test, b_test, s_str= load_datasets("C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace", "talking")
 
-    # check results
-    print(np.array(c_pred).shape, np.array(b_pred).shape)
-    print(np.array(c_test).shape, np.array(b_test).shape)
-    print()
-    print(s_str)
+    # # check results
+    # print(np.array(c_pred).shape, np.array(b_pred).shape)
+    # print(np.array(c_test).shape, np.array(b_test).shape)
+    # print()
+    # print(s_str)
 
     

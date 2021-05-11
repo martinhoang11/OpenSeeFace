@@ -169,8 +169,8 @@ def draw_axis(img, yaw, pitch, roll, tdx=None, tdy=None, size = 100):
     x3 = size * (sin(yaw)) + tdx
     y3 = size * (-cos(yaw) * sin(pitch)) + tdy
 
-    cv2.line(img, (int(tdx), int(tdy)), (int(x1),int(y1)),(0,0,255),3)
-    cv2.line(img, (int(tdx), int(tdy)), (int(x2),int(y2)),(0,255,0),3)
+    cv2.line(img, (int(tdx), int(tdy)), (int(x1),int(y1)),(0,0,255),2)
+    cv2.line(img, (int(tdx), int(tdy)), (int(x2),int(y2)),(0,255,0),2)
     cv2.line(img, (int(tdx), int(tdy)), (int(x3),int(y3)),(255,0,0),2)
 
     return img
@@ -700,19 +700,19 @@ try:
                     packet.extend(bytearray(struct.pack("f", c)))
                 if args.visualize > 1:
                     frame = cv2.putText(frame, str(f.id), (int(f.bbox[0]), int(f.bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,0))
-                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,255,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
 
-                    frame = cv2.putText(frame, 'blink: (model)' + str(blink_count) + ' - (ear)' + str(blink_count_origin), (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, 'blink: (model)' + str(blink_count) + ' - (ear)' + str(blink_count_origin), (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
                     frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,0,255), 1)
-                    frame = cv2.putText(frame, 'mouth: ', (10,120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(pitch, 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(yaw, 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(roll, 3)})", (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_ud: {eye_stt_ud}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_lr: {eye_stt_lr}", (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_x_lr: {left_gaze[0]:.3f}/{right_gaze[0]:.3f}", (10, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_y_ud: {left_gaze[1]:.3f}/{right_gaze[1]:.3f}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"EAR: {f.eye_blink[0]:.3f}-{f.eye_blink[1]:.3f}", (10, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0, 0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, 'mouth: ', (10,120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(pitch, 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(yaw, 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(roll, 3)})", (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_ud: {eye_stt_ud}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_lr: {eye_stt_lr}", (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_x_lr: {left_gaze[0]:.3f}/{right_gaze[0]:.3f}", (10, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_y_ud: {left_gaze[1]:.3f}/{right_gaze[1]:.3f}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"EAR: {f.eye_blink[0]:.3f}-{f.eye_blink[1]:.3f}", (10, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
 
                 if args.visualize > 2:
                     frame = cv2.putText(frame, f"{f.conf:.4f}", (int(f.bbox[0] + 18), int(f.bbox[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
@@ -793,11 +793,15 @@ try:
                 
                 for gaze, headpose in zip(gaze_est.tolist(), head_list):
                     # Build visualizations
-                    r_gaze_img = gaze_estimator.visualize_eye_result(re_c, gaze)
-                    l_gaze_img = gaze_estimator.visualize_eye_result(le_c, gaze)
-                    s_gaze_img = np.concatenate((cv2.resize(r_gaze_img, (112,112)), cv2.resize(l_gaze_img, (112,112))), axis=1)
+                    # r_gaze_img = gaze_estimator.visualize_eye_result(re_c, gaze)
+                    # l_gaze_img = gaze_estimator.visualize_eye_result(le_c, gaze)
+                    # s_gaze_img = np.concatenate((cv2.resize(r_gaze_img, (112,112)), cv2.resize(l_gaze_img, (112,112))), axis=1)
                     
-                    cv2.imshow('eye_gaze', s_gaze_img)
+                    # cv2.imshow('eye_gaze', s_gaze_img)
+                    endpoint_x_r, endpoint_y_r = get_endpoint(gaze[0], gaze[1], f.lms[66][1], f.lms[66][0], 70)
+                    endpoint_x_l, endpoint_y_l = get_endpoint(gaze[0], gaze[1], f.lms[67][1], f.lms[67][0], 70)
+                    cv2.line(frame, (int(f.lms[66][1]), int(f.lms[66][0])), (int(endpoint_x_r), int(endpoint_y_r)), (0, 255, 255), 2)
+                    cv2.line(frame, (int(f.lms[67][1]), int(f.lms[67][0])), (int(endpoint_x_l), int(endpoint_y_l)), (0, 255, 255), 2)
     
             #########3
             if detected and len(faces) < 40:
