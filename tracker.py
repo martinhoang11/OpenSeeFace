@@ -10,6 +10,7 @@ import copy
 from similaritytransform import SimilarityTransform
 from retinaface import RetinaFaceDetector
 from remedian import remedian
+import matplotlib.pyplot as plt
 
 def resolve(name):
     f = os.path.join(os.path.dirname(__file__), name)
@@ -715,6 +716,7 @@ class Tracker():
         outputs[0, 0, outputs[0, 0] != maxpool[0, 0]] = 0
         detections = np.flip(np.argsort(outputs[0,0].flatten()))
         results = []
+        print(self.max_faces)
         for det in detections[0:self.max_faces]:
             y, x = det // 56, det % 56
             c = outputs[0, 0, y, x]
@@ -729,6 +731,7 @@ class Tracker():
         if results.shape[0] > 0:
             results[:, [0,2]] *= frame.shape[1] / 224.
             results[:, [1,3]] *= frame.shape[0] / 224.
+        print(results)
         return results
 
     def landmarks(self, tensor, crop_info):
@@ -860,7 +863,6 @@ class Tracker():
         euler = cv2.RQDecomp3x3(rmat)[0]
 
         return True, matrix_to_quaternion(rmat), euler, pnp_error, pts_3d, lms, rmat
-        # return True, matrix_to_quaternion(rmat), euler, pnp_error, pts_3d, lms
 
     def preprocess(self, im, crop):
         x1, y1, x2, y2 = crop
@@ -1111,6 +1113,7 @@ class Tracker():
         start_model = time.perf_counter()
         outputs = {}
         if num_crops == 1:
+            print(self.input_name)
             output = self.session.run([], {self.input_name: crops[0]})[0]
             conf, lms = self.landmarks(output[0], crop_info[0])
             if conf > self.threshold:
@@ -1175,7 +1178,6 @@ class Tracker():
         for face_info in self.face_info:
             if face_info.alive and face_info.conf > self.threshold:
                 face_info.success, face_info.quaternion, face_info.euler, face_info.pnp_error, face_info.pts_3d, face_info.lms, rmat = self.estimate_depth(face_info)
-                # face_info.success, face_info.quaternion, face_info.euler, face_info.pnp_error, face_info.pts_3d, face_info.lms = self.estimate_depth(face_info)
                 face_info.adjust_3d()
                 lms = face_info.lms[:, 0:2]
                 x1, y1 = tuple(lms[0:66].min(0))
@@ -1213,5 +1215,9 @@ class Tracker():
             print(f"Took {duration:.2f}ms (detect: {duration_fd:.2f}ms, crop: {duration_pp:.2f}ms, track: {duration_model:.2f}ms, 3D points: {duration_pnp:.2f}ms)")
 
         results = sorted(results, key=lambda x: x.id)
-        return results, rmat
+        try:
+            return results, rmat
+        except:
+            rmat = 0
+            return results, rmat
         # return results

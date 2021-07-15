@@ -6,16 +6,21 @@ import traceback
 import gc
 import math
 from math import cos, sin
+from scipy.linalg.misc import norm
 from scipy.spatial import distance as dist
 import imutils
 import pandas as pd
+import tensorflow as tf
+import numpy as np
 from rt_gene.estimate_gaze_tensorflow import GazeEstimator
 from rt_gene.tracker_generic import GenericTracker
 import matplotlib.pyplot as plt
 from rt_gene.gaze_tools import get_phi_theta_from_euler, limit_yaw
 from rt_gene.gaze_tools_standalone import euler_from_matrix
 from imutils import paths
-
+import joblib
+import onnxruntime as rt
+from sklearn.preprocessing import StandardScaler
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("-i", "--ip", help="Set IP address for sending tracking data", default="127.0.0.1")
@@ -181,15 +186,15 @@ def get_endpoint(theta, phi, center_x, center_y, length=300):
     return endpoint_x, endpoint_y
 
 def visualize_eye_result(eye_image, est_gaze, tdx, tdy, center_x, center_y):
-        """Here, we take the original eye eye_image and overlay the estimated gaze."""
-        # output_image = np.copy(eye_image)
+    """Here, we take the original eye eye_image and overlay the estimated gaze."""
+    # output_image = np.copy(eye_image)
 
 
-        endpoint_x, endpoint_y = get_endpoint(est_gaze[0], est_gaze[1], center_x, center_y, 50)
+    endpoint_x, endpoint_y = get_endpoint(est_gaze[0], est_gaze[1], center_x, center_y, 50)
 
-        # print(endpoint_x, endpoint_y)
-        cv2.line(eye_image, (int(tdx), int(tdy)), (int(endpoint_x), int(endpoint_y)), (0, 255, 0))
-        return eye_image
+    # print(endpoint_x, endpoint_y)
+    cv2.line(eye_image, (int(tdx), int(tdy)), (int(endpoint_x), int(endpoint_y)), (0, 255, 0))
+    return eye_image
 
 def eye_aspect_ratio(eye):
     A = dist.euclidean(eye[1], eye[5])
@@ -326,6 +331,32 @@ def get_image_from_bb(img, bb):
     roi = img[bb[1]:bb[1] + bb[3], bb[0]:bb[0] + bb[2]]
     return np.array(roi)
 
+def prepare_input_blob(im):
+  if im.shape[0] != MAX_IMAGE_WIDTH or im.shape[1] != MAX_IMAGE_HEIGHT:
+      im = cv2.resize(im, IMAGE_PAIR_SIZE)
+  im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+  return im
+
+def detect_image(frame, face):
+  (startX, startY, endX, endY) = face
+
+  gray_img = prepare_input_blob(frame)
+
+
+  image_frame = gray_img[:, :, np.newaxis]
+  image_frame = image_frame / 255.0
+  image_frame = np.expand_dims(image_frame, 0).astype(np.float32)
+
+  pred = onnx_sess.run([label_name], {input_name: image_frame})[0]
+
+  pred = np.squeeze(pred)
+  pred = round(pred[()], 2)
+
+  # print(f'Prediction: {pred:.2f}; time: {time_diff} ms')
+#   print(pred)
+
+  return frame, pred
+
 import numpy as np
 import time
 import cv2
@@ -348,7 +379,6 @@ if args.benchmark > 0:
         for i in range(100):
             start = time.perf_counter()
             r, rmat = tracker.predict(im)
-            # r = tracker.predict(im)
             total += time.perf_counter() - start
         print(1. / (total / 100.))
     sys.exit(0)
@@ -391,13 +421,35 @@ eye_blink_lst = []
 eye_blink_temp = []
 EYE_AR_THRESH = 0.2
 EYE_AR_CONSEC_FRAMES = 1
+EYE_THRESH = 3
 COUNTER = 0
 COUNTER_ORIGIN = 0
+COUNTER_YAWN = 0
 
-
-array_blink_threshold = list()
-ear_list = list()
-col=['F1',"F2","F3","F4","F5",'F6',"F7", "F8", "F9", "F10", "F11", "F12", "F13"]
+COUNTER = 0
+TOTAL = 0
+current_frame = 1
+blink_start = 0
+blink_end = 0
+closeness = 0
+output_closeness = []
+output_blinks = []
+blink_info = (0,0)
+processed_frame = []
+np_eye = np.array([])
+lStart = 42
+lEnd = 48
+rStart = 36
+rEnd = 42
+ear_th = 0.18
+consec_th = 3
+up_to = None
+w_size = 3
+yawn_count = 0
+CONFIDENCE_THRESHOLD = 0.4
+MAX_IMAGE_WIDTH = 100
+MAX_IMAGE_HEIGHT = 100
+IMAGE_PAIR_SIZE = (MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT)
 
 features = ["eye_l", "eye_r", "eyebrow_steepness_l", "eyebrow_updown_l", "eyebrow_quirk_l", "eyebrow_steepness_r", "eyebrow_updown_r", "eyebrow_quirk_r", "mouth_corner_updown_l", "mouth_corner_inout_l", "mouth_corner_updown_r", "mouth_corner_inout_r", "mouth_open", "mouth_wide"]
 
@@ -419,12 +471,32 @@ is_camera = args.capture == str(try_int(args.capture))
 if args.eye_gaze == 1:
     if args.ensamble == 1:
         gaze_estimator = GazeEstimator("/cpu:0", ['C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_0_02.h5',
-                                                'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_1_02.h5',
-                                                'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_2_02.h5',
-                                                'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_3_02.h5'])
+                                                 'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_1_02.h5',
+                                                 'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_2_02.h5',
+                                                 'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\all_subjects_mpii_prl_utmv_3_02.h5'])
     else:
-        gaze_estimator = GazeEstimator("/cpu:0", 'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\Model_allsubjects1.h5')
+        # gaze_estimator = GazeEstimator("/cpu:0", 'C:\\Users\\huynh14\\DMS\\scripts\\facelandmarks\\OpenSeeFace\\rt_gene\\rt_gene\\model_nets\\Model_allsubjects1.h5')
+        interpreter = tf.lite.Interpreter(model_path="Model_allsubjects1.tflite")
+        interpreter.allocate_tensors()
+
+        # Get input and output tensors.
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+
+        # Test model on random input data.
+        input_shape = input_details[0]['shape']
 ###
+
+###load eye blink model
+eye_blink_model = joblib.load('best_model.pkl')
+yawn_model = joblib.load('mouth_model.pkl')
+yawn_scale = joblib.load('mouth_stdscale.pkl')
+eye_scale = joblib.load('eye_std_scale.pkl')
+
+#load onnx model
+onnx_sess = rt.InferenceSession('C:\\Users\\huynh14\\DMS\\intern_dms\\models\\yawn_model_80.onnx')
+input_name = onnx_sess.get_inputs()[0].name
+label_name = onnx_sess.get_outputs()[0].name
 
 try:
     attempt = 0
@@ -453,6 +525,7 @@ try:
         
         ret, frame = input_reader.read()
         eye_gaze_frame = copy.deepcopy(frame)
+        
         # frame = cv2.flip(frame,1)
         #2 -50 - 0.5 -20,-50
         # frame = cv2.convertScaleAbs(frame, -1, 0.5, -20)
@@ -488,21 +561,25 @@ try:
 
         try:
             inference_start = time.perf_counter()
+            start_time = time.time()
             faces, rmat = tracker.predict(frame)
-            # faces = tracker.predict(frame)
             if len(faces) > 0:
                 inference_time = (time.perf_counter() - inference_start)
                 total_tracking_time += inference_time
                 tracking_time += inference_time / len(faces)
                 tracking_frames += 1
-            # else:
-            #     ear_list.append(np.nan)
-            #     array_blink_threshold.append(np.nan)
+
+            if len(faces) == 0 or len(faces) > 1:
+                np_eye = np.append(np_eye, -1)
+                continue
+            
             packet = bytearray()
             detected = False
             r_eye_roi_resize = []
             l_eye_roi_resize = []
             head_list = []
+            np_mouth = np.array([])
+            list_fps = []
 
             for face_num, f in enumerate(faces):
                 f = copy.copy(f)
@@ -543,7 +620,8 @@ try:
                 ###mouth opening - Thresh hold
                 try:
                     if f.current_features['mouth_open'] > 0.5 and f.current_features['mouth_wide'] < 0.1:
-                        frame = cv2.putText(frame, 'Open', (80,120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
+                        # yawn_count += 1
+                        pass
                 except:
                     pass
 
@@ -632,26 +710,31 @@ try:
                 # else:
                 #     eye_blink_temp.append(np.average(f.eye_blink))
 
-                r_eye = [swap_xy(f.lms[36]), swap_xy(f.lms[37]), swap_xy(f.lms[38]), swap_xy(f.lms[39]), swap_xy(f.lms[40]), swap_xy(f.lms[41])]
-                l_eye = [swap_xy(f.lms[42]), swap_xy(f.lms[43]), swap_xy(f.lms[44]), swap_xy(f.lms[45]), swap_xy(f.lms[46]), swap_xy(f.lms[47])]
+                # r_eye = [swap_xy(f.lms[36]), swap_xy(f.lms[37]), swap_xy(f.lms[38]), swap_xy(f.lms[39]), swap_xy(f.lms[40]), swap_xy(f.lms[41])]
+                # l_eye = [swap_xy(f.lms[42]), swap_xy(f.lms[43]), swap_xy(f.lms[44]), swap_xy(f.lms[45]), swap_xy(f.lms[46]), swap_xy(f.lms[47])]
+                r_eye = [[f.lms[36][1], f.lms[36][0]], [f.lms[37][1], f.lms[37][0]], [f.lms[38][1], f.lms[38][0]], [f.lms[39][1], f.lms[39][0]], [f.lms[40][1], f.lms[40][0]], [f.lms[41][1], f.lms[41][0]]]
+                l_eye = [[f.lms[42][1], f.lms[42][0]], [f.lms[43][1], f.lms[43][0]], [f.lms[44][1], f.lms[44][0]], [f.lms[45][1], f.lms[45][0]], [f.lms[46][1], f.lms[46][0]], [f.lms[47][1], f.lms[47][0]]]
+
                 ear_origin = np.average((eye_aspect_ratio(r_eye), eye_aspect_ratio(l_eye)))
 
-
+                ear_model = (f.eye_blink[0] + f.eye_blink[1]) / 2.0
+                np_eye = np.append(np_eye, ear_model)
+                np_mouth = np.append(np_mouth, [f.current_features['mouth_open'], f.current_features['mouth_wide']])
                 ear = np.average(f.eye_blink)
                 # # ear_list.append(ear)
                 # # array_blink_threshold.append(0) 
 
-                if ear < 0.7:
-                    COUNTER += 1
-                # otherwise, the eye aspect ratio is not below the blink
-                # threshold
-                else:
-                    # if the eyes were closed for a sufficient number of
-                    # then increment the total number of blinks
-                    if COUNTER >= EYE_AR_CONSEC_FRAMES:
-                        blink_count += 1
-                    # reset the eye frame counter
-                    COUNTER = 0
+                # if ear < 0.7:
+                #     COUNTER += 1
+                # # otherwise, the eye aspect ratio is not below the blink
+                # # threshold
+                # else:
+                #     # if the eyes were closed for a sufficient number of
+                #     # then increment the total number of blinks
+                #     if COUNTER >= EYE_AR_CONSEC_FRAMES:
+                #         blink_count += 1
+                #     # reset the eye frame counter
+                #     COUNTER = 0
                 
                 if ear_origin < 0.19:
                     COUNTER_ORIGIN += 1
@@ -691,28 +774,65 @@ try:
                     r_eye_roi_resize.append(input_from_image(re_c))
                     l_eye_roi_resize.append(input_from_image(le_c))
                     head_list.append([phi_head, theta_head])
-
                 #########
+                
+                ###predict eye_blink
+                if len(np_eye) >= 13:
+                    norm_eye = np_eye[:13]
+                    norm_eye = StandardScaler().fit_transform(norm_eye[:, np.newaxis]).reshape(1, -1)
+                    eye_lbl = eye_blink_model.predict(norm_eye)
+                    np_eye = np.delete(np_eye, 0) #w_size = 3
+                    if eye_lbl == 1:
+                        COUNTER += 1
+                    else:
+                        if COUNTER >= 3:
+                            blink_count += 1
+                        COUNTER = 0
+
+                ###predict mouth
+                # norm_mouth = yawn_scale.transform(np_mouth[:, np.newaxis]).reshape(1, -1)
+                # mouth_lbl = yawn_model.predict(norm_mouth)
+
+                x,y,w,h = [int(f.bbox[0]), int(f.bbox[1]), int(f.bbox[2]), int(f.bbox[3])]
+                yawn_frame = eye_gaze_frame[y:y+h, x:x+w, :]
+                
+                height, width, channels = yawn_frame.shape
+                rect = (0, 0, width, height)
+                nframe, pred = detect_image(yawn_frame, rect)
+
+                is_mouth_opened = True if pred >= CONFIDENCE_THRESHOLD else False
+                opened_str = 1 if is_mouth_opened else 0
+                if opened_str == 1:
+                        COUNTER_YAWN += 1
+                else:
+                    if COUNTER_YAWN >= 5: #should check
+                        yawn_count += 1
+                    COUNTER_YAWN = 0
+                ######
+
                 frame_count += 1
+                end_time = time.time()
+                fps = round(1 / (end_time - start_time), 2)
+                list_fps.append(fps)
                 if not log is None:
                     log.write(f"{frame_count},{now},{width},{height},{args.fps},{face_num},{f.id},{f.eye_blink[0]},{f.eye_blink[1]},{f.conf},{f.success},{f.pnp_error},{f.quaternion[0]},{f.quaternion[1]},{f.quaternion[2]},{f.quaternion[3]},{f.euler[0]},{f.euler[1]},{f.euler[2]},{f.rotation[0]},{f.rotation[1]},{f.rotation[2]},{f.translation[0]},{f.translation[1]},{f.translation[2]}")
                 for (x,y,c) in f.lms:
                     packet.extend(bytearray(struct.pack("f", c)))
                 if args.visualize > 1:
                     frame = cv2.putText(frame, str(f.id), (int(f.bbox[0]), int(f.bbox[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,0,0))
-                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, "FPS : %0.1f" % fps, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
 
-                    frame = cv2.putText(frame, 'blink: (model)' + str(blink_count) + ' - (ear)' + str(blink_count_origin), (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, 'blink: (SVM)' + str(blink_count) + ' - (ear)' + str(blink_count_origin), (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
                     frame = cv2.rectangle(frame, (int(f.bbox[0]),int(f.bbox[1])), (int(f.bbox[0]+f.bbox[2]),int(f.bbox[1]+f.bbox[3])), (0,0,255), 1)
-                    frame = cv2.putText(frame, 'mouth: ', (10,120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(pitch, 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(yaw, 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(roll, 3)})", (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_ud: {eye_stt_ud}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_lr: {eye_stt_lr}", (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_x_lr: {left_gaze[0]:.3f}/{right_gaze[0]:.3f}", (10, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"eye_y_ud: {left_gaze[1]:.3f}/{right_gaze[1]:.3f}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
-                    frame = cv2.putText(frame, f"EAR: {f.eye_blink[0]:.3f}-{f.eye_blink[1]:.3f}", (10, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0,240,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"mouth: {yawn_count}", (10,120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_pitch: {pitch_stt}({round(pitch, 3)})", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_yaw: {yaw_stt}({round(yaw, 3)})", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"h_roll: {roll_stt}({round(roll, 3)})", (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_ud: {eye_stt_ud}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_lr: {eye_stt_lr}", (10, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_x_lr: {left_gaze[0]:.3f}/{right_gaze[0]:.3f}", (10, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"eye_y_ud: {left_gaze[1]:.3f}/{right_gaze[1]:.3f}", (10, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
+                    frame = cv2.putText(frame, f"EAR: {f.eye_blink[0]:.3f}-{f.eye_blink[1]:.3f}", (10, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,0,0), 1, cv2.LINE_AA)
 
                 if args.visualize > 2:
                     frame = cv2.putText(frame, f"{f.conf:.4f}", (int(f.bbox[0] + 18), int(f.bbox[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
@@ -785,25 +905,49 @@ try:
                     log.write("\r\n")
                     log.flush()
 
-            ##########eye gaze
+            #########eye gaze
+            # try:
+            #     if args.eye_gaze == 1:
+            #         gaze_est = gaze_estimator.estimate_gaze_twoeyes(inference_input_left_list=l_eye_roi_resize,
+            #                                                 inference_input_right_list=r_eye_roi_resize,
+            #                                                 inference_headpose_list=head_list)
+            #         for gaze, headpose in zip(gaze_est.tolist(), head_list):
+            #             endpoint_x_r, endpoint_y_r = get_endpoint(gaze[0], gaze[1], f.lms[66][1], f.lms[66][0], 70)
+            #             endpoint_x_l, endpoint_y_l = get_endpoint(gaze[0], gaze[1], f.lms[67][1], f.lms[67][0], 70)
+            #             cv2.line(frame, (int(f.lms[66][1]), int(f.lms[66][0])), (int(endpoint_x_r), int(endpoint_y_r)), (0, 255, 255), 2)
+            #             cv2.line(frame, (int(f.lms[67][1]), int(f.lms[67][0])), (int(endpoint_x_l), int(endpoint_y_l)), (0, 255, 255), 2)
+            # except:
+            #     print("Can't detect eye area")
             if args.eye_gaze == 1:
-                gaze_est = gaze_estimator.estimate_gaze_twoeyes(inference_input_left_list=l_eye_roi_resize,
-                                                        inference_input_right_list=r_eye_roi_resize,
-                                                        inference_headpose_list=head_list)
-                
+                # gaze_est = gaze_estimator.estimate_gaze_twoeyes(inference_input_left_list=l_eye_roi_resize,
+                #                                         inference_input_right_list=r_eye_roi_resize,
+                #                                         inference_headpose_list=head_list)
+                # print(gaze_est) #[[1,2]]
+                # 
+
+                #tflite-model
+                img = np.array(l_eye_roi_resize)
+                img = img.reshape(36,60,3)
+                # img = cv2.resize(img, (60,36))
+                #Preprocess the image to required size and cast
+                input_tensor= np.array(np.expand_dims(img, 0), dtype=np.float32)
+                input_index = interpreter.get_input_details()[0]["index"]
+                interpreter.set_tensor(input_index, input_tensor)
+                #
+                #Run the inference
+                interpreter.invoke()
+                output_details = interpreter.get_output_details()
+                gaze_est = interpreter.get_tensor(output_details[0]['index'])
+
+                ####
                 for gaze, headpose in zip(gaze_est.tolist(), head_list):
-                    # Build visualizations
-                    # r_gaze_img = gaze_estimator.visualize_eye_result(re_c, gaze)
-                    # l_gaze_img = gaze_estimator.visualize_eye_result(le_c, gaze)
-                    # s_gaze_img = np.concatenate((cv2.resize(r_gaze_img, (112,112)), cv2.resize(l_gaze_img, (112,112))), axis=1)
-                    
-                    # cv2.imshow('eye_gaze', s_gaze_img)
                     endpoint_x_r, endpoint_y_r = get_endpoint(gaze[0], gaze[1], f.lms[66][1], f.lms[66][0], 70)
                     endpoint_x_l, endpoint_y_l = get_endpoint(gaze[0], gaze[1], f.lms[67][1], f.lms[67][0], 70)
                     cv2.line(frame, (int(f.lms[66][1]), int(f.lms[66][0])), (int(endpoint_x_r), int(endpoint_y_r)), (0, 255, 255), 2)
                     cv2.line(frame, (int(f.lms[67][1]), int(f.lms[67][0])), (int(endpoint_x_l), int(endpoint_y_l)), (0, 255, 255), 2)
-    
-            #########3
+            #########
+
+
             if detected and len(faces) < 40:
                 sock.sendto(packet, (target_ip, target_port))
 
@@ -874,7 +1018,7 @@ try:
             failures += 1
             if failures > 30:
                 break
-
+            np_eye = np.append(np_eye, -1)
 
         collected = False
         del frame
@@ -905,44 +1049,4 @@ if args.silent == 0 and tracking_frames > 0:
     print(f"Average tracking time per detected face: {average_tracking_time:.2f} ms")
     print(f"Tracking time: {total_tracking_time:.3f} s\nFrames: {tracking_frames}")
 
-
-
-
-
-    # df = pd.DataFrame(eye_blink_lst, columns=col)
-    # df.to_csv('test_model_4_13f.csv')
-    # mov_ear_3=moving_av(ear_list,3)
-    # mov_ear_5=moving_av(ear_list,5)
-    # mov_ear_7=moving_av(ear_list,7)
-
-    # ear_list = pd.Series(ear_list, index=range(0, len(ear_list)))
-    # array_blink_threshold=pd.Series(array_blink_threshold,index=range(0, len(array_blink_threshold)))
-
-    # mov_ear_3=pd.Series(mov_ear_3, index=range(2, len(mov_ear_3)+2))
-    # mov_ear_5=pd.Series(mov_ear_5, index=range(3, len(mov_ear_5)+3))
-    # mov_ear_7=pd.Series(mov_ear_7, index=range(4, len(mov_ear_7)+4))
-
-    # ear_list = pd.DataFrame(ear_list)
-    # ear_list["threshold"] = array_blink_threshold
-    # ear_list["mov_ear_3"] = mov_ear_3
-    # ear_list["mov_ear_5"] = mov_ear_5
-    # ear_list["mov_ear_7"] = mov_ear_7
-    # ear_list.columns = ["ear", "threshold", "mov_ear_3","mov_ear_5","mov_ear_7"]
-    # #ear_list = ear_list.fillna(0)
-    # #mask = ear_list.tag == 0
-    # #ear_list.tag = ear_list.tag.where(mask, 1)
-
-    # ear_list.index.name="frame"
-    # '''
-    # try:
-    #     ear_list.to_csv("non_training_data_raw_data/{}/{}.csv".format(
-    #             args["video"][6:-4]), index=True, header=True)
-    # except FileNotFoundError:
-    #     ear_list.to_csv("non_training_data_raw_data/{}.csv".format(
-    #             args["video"][7:-4]), index=True, header=True)
-    # # do a bit of cleanup
-    # cv2.destroyAllWindows()
-    # vs.stop()
-    # '''
-    # ear_list.to_csv("model_4.csv",index=True, header=True)
-
+print('FPS average: ', np.average(np.array(list_fps)))
